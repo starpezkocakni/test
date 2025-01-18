@@ -10,7 +10,7 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
     $key = $_GET['key'];
 
     $username = 'root';
-    $ip = '167.71.217.90';
+    $ip = '188.166.247.132';
     $ports = '22';
     $password = 'Jancuk123@Asu';
 
@@ -70,7 +70,7 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
             $command = "cd /var/www/html/test/ && pkill screen";
             break;
         case 'UPDATE':
-            $command = "cd /var/www/html/test/ && screen -dm node scrape.js && cd /root/ && apt update -y && apt upgarde -y";
+            $command = "cd /var/www/html/test/ && screen -dm node scrape.js && cd /root/ && apt update && apt upgrade -y";
             break;
         default:
             die("Unknown method");
