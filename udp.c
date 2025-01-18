@@ -18,6 +18,11 @@ int main(int argc, char *argv[]) {
     int port = atoi(argv[2]);
     int duration = atoi(argv[3]);
 
+    if (port == 80 || port == 443) {
+        printf("Error: Serangan ke port 80 dan 443 tidak diperbolehkan!\n");
+        return 1;
+    }
+
     int sockfd;
     struct sockaddr_in target_addr;
     char packet[PACKET_SIZE];
