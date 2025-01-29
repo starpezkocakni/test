@@ -179,7 +179,7 @@ async function detectChallenge(browser, page) {
                    width: 307, height: 125,
               },
             });
-            const image1 = fs.readFileSync('01.png');
+            const image1 = fs.readFileSync('capt.png');
             const image2 = fs.readFileSync('./brow/captcha.png');
             const compareImages = (image1, image2) => {
               return new Promise((resolve, reject) => {
