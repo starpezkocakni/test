@@ -61,7 +61,7 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
             $command = "cd /var/www/html/test/ && screen -dm node hold $host $time 8 2 proxy.txt";
             break;
         case 'BROWSER':
-            $command = "cd /var/www/html/test/ && screen -dm node brow $host $time 4 proxy.txt";
+            $command = "cd /var/www/html/test/ && screen -dm node brow $host $time 4";
             break;
         case 'STORM':
             $command = "cd /var/www/html/test/ && screen -dm node Storm $host $time 8 2 proxy.txt";
